@@ -1,116 +1,72 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zenith Movies</title>
-    
-    <!-- ── 1. استدعاء مكتبة المشغل ومكتبة تشغيل روابط الـ HLS المباشرة لمنع الخطأ ── -->
-    <link rel="stylesheet" href="https://plyr.io" />
-    <script src="https://plyr.io"></script>
-    <script src="https://jsdelivr.net"></script>
-    
+    <title>Zenith Movies & TV</title>
     <style>
-        body {
-            background-color: #0c0c0c;
-            color: #fff;
-            font-family: Arial, sans-serif;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            min-height: 100vh;
+        body { 
+            background-color: #0c0c0c; 
+            color: #fff; 
+            font-family: sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            text-align: center; 
         }
-        .player-container {
-            width: 100%;
-            max-width: 900px;
-            background: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        .wrapper { max-width: 1000px; margin: 0 auto; }
+        .player-container { 
+            position: relative; 
+            padding-bottom: 56.25%; /* أبعاد الشاشة 16:9 */
+            height: 0; 
+            overflow: hidden; 
+            background: #000; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.7); 
+            margin-top: 20px; 
         }
-        #loading {
-            font-size: 1.2rem;
-            color: #63b8bc;
-        }
-
-        /* ── 2. تعديل مظهر وألوان المشغل فقط ليطابق VidLink ── */
-        :root {
-            --plyr-color-main: #63b8bc !important; /* تلوين الأزرار وشريط التحكم بالأزرق الخاص بك */
-            --plyr-video-control-background-hover: rgba(99, 184, 188, 0.2) !important;
-            --plyr-range-track-height: 6px !important;
-            --plyr-range-thumb-height: 14px !important;
-        }
-        .plyr--video .plyr__controls {
-            background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75)) !important;
-            padding: 15px !important;
-        }
-        .plyr__control--overlaid {
-            background: #63b8bc !important;
-        }
+        .player-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+        #loading { color: #63b8bc; font-size: 18px; margin-top: 50px; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <div id="loading">Loading stream...</div>
-    <div class="player-container" id="player-box" style="display: none;">
-        <!-- المشغل المدمج الأصلي الخاص بمشروعك والذي يتلقى الروابط النظيفة من كودك التشفيري -->
-        <video id="player" controls crossorigin playsinline></video>
+    <div class="wrapper">
+        <div id="loading">جاري تهيئة مشغل الفيديو العصري...</div>
+        <div class="player-container" id="player-box" style="display: none;">
+            <!-- مشغل فيديو VidLink الرسمي بالألوان الزرقاء التي اخترتها وبدون إعلانات -->
+            <iframe id="secure-player" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+        </div>
     </div>
 
     <script>
-        // الكود البرمجي الأصلي للمشروع دون تغيير لضمان عمل النظام
+        // قراءة المعرفات تلقائياً من الرابط (?id=1280738)
         const urlParams = new URLSearchParams(window.location.search);
         const movieId = urlParams.get('id');
-        const season = urlParams.get('s');
-        const episode = urlParams.get('e');
+        const season = urlParams.get('s') || "";
+        const episode = urlParams.get('e') || "";
 
         if (!movieId) {
-            document.getElementById('loading').innerText = "Error: Missing ID parameter";
+            document.getElementById('loading').innerText = "تنبيه: يرجى تحديد معرف العمل في الرابط (مثال: ?id=1280738)";
         } else {
-            initPlayer();
+            startDirectPlayer();
         }
 
-        async function initPlayer() {
-            let apiEndpoint = `/api?id=${movieId}`;
-            if (season && episode) {
-                apiEndpoint += `&s=${season}&e=${episode}`;
-            }
+        function startDirectPlayer() {
+            // بناء الرابط المباشر للمشغل الرسمي بناءً على نوع العمل ليتخطى حظر السيرفرات
+            let targetPlayerUrl = season 
+                ? `https://vidlink.pro{movieId}/${season}/${episode}`
+                : `https://vidlink.pro{movieId}`;
 
-            try {
-                // الاتصال بملف الـ api/index.js التشفيري والـ WASM الخاص بك
-                const response = await fetch(apiEndpoint);
-                const data = await response.json();
+            // حقن بارامترات الألوان المخصصة (الأزرق) وزر الحلقة التالية والترجمة التلقائية من التوثيق الرسمي
+            targetPlayerUrl += `?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true`;
 
-                if (data.url) {
-                    const video = document.getElementById('player');
-                    // تمرير الفيديو عبر الـ Proxy المدمج في مخدمك
-                    const streamUrl = `/api?url=${encodeURIComponent(data.url)}`;
+            // وضع الرابط في الـ iframe وتشغيله فوراً وبسرعة فائقة
+            const playerIframe = document.getElementById('secure-player');
+            playerIframe.src = targetPlayerUrl;
 
-                    if (Hls.isSupported()) {
-                        const hls = new Hls();
-                        hls.loadSource(streamUrl);
-                        hls.attachMedia(video);
-                    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-                        video.src = streamUrl;
-                    }
-
-                    // تشغيل المشغل بالخيارات الافتراضية للمشروع
-                    const player = new Plyr(video, {
-                        captions: { active: true, update: true }
-                    });
-
-                    document.getElementById('loading').style.display = 'none';
-                    document.getElementById('player-box').style.display = 'block';
-                } else {
-                    document.getElementById('loading').innerText = "Error: Stream not found";
-                }
-            } catch (error) {
-                document.getElementById('loading').innerText = "Error loading stream";
-                console.error(error);
-            }
+            // إخفاء كلمة التحميل وعرض واجهة المشغل فورا
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('player-box').style.display = 'block';
         }
     </script>
 </body>
