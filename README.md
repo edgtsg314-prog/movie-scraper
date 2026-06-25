@@ -74,3 +74,9 @@ That’s it. No accounts, no UI clutter — just press play.
 ## ⭐ Support
 
 If you like this project, consider giving it a star ⭐ on GitHub!
+
+
+## Update
+- JW Player now detects source type automatically: HLS, MP4, DASH, WebM, proxy URLs.
+- Arabic captions are selected automatically when available.
+- External Arabic VTT can still be passed with `?sub=https://site.com/ar.vtt&sub_label=العربية`.

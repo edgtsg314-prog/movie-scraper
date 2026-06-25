@@ -23,7 +23,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 #err{display:none;flex-direction:column;gap:14px;padding:24px;background:#000}
 #err-title{font-size:32px;font-weight:900}.err-card{max-width:720px;background:#111;border:1px solid rgba(255,255,255,.1);border-radius:20px;padding:22px;color:#ccc;line-height:1.8}.err-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}.err-actions a,.err-actions button{background:#e50914;border-radius:999px;padding:12px 18px;text-decoration:none;color:#fff;font-weight:800}#err-detail{direction:ltr;font-size:12px;color:#777;max-width:92vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #player{position:fixed;inset:0;display:none;background:#000;overflow:hidden;direction:ltr}
-#jwbox,#fallbackVideo{position:absolute;inset:0;width:100%;height:100%;background:#000}
+#jwbox,#embedFrame,#fallbackVideo{position:absolute;inset:0;width:100%;height:100%;background:#000;border:0}
 #fallbackVideo{object-fit:contain;display:none}
 .brand-top{position:absolute;top:calc(env(safe-area-inset-top) + 18px);left:22px;right:22px;z-index:10;display:flex;align-items:center;justify-content:space-between;pointer-events:none}.brand-title{direction:rtl;text-align:center;font-weight:900;font-size:clamp(18px,2vw,30px);text-shadow:0 4px 22px #000}.brand-meta{font-size:13px;color:#ddd;margin-top:4px;font-weight:700}.back{pointer-events:auto;width:46px;height:46px;border-radius:50%;background:rgba(16,16,16,.74);border:1px solid rgba(255,255,255,.14);display:grid;place-items:center;font-size:28px;backdrop-filter:blur(12px)}.back:hover{background:#e50914}.spacer{width:46px}
 .jwplayer.jw-skin-iptvexpert .jw-controlbar{background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.88))!important;padding:0 24px 18px!important}.jwplayer.jw-skin-iptvexpert .jw-progress{background:#e50914!important}.jwplayer.jw-skin-iptvexpert .jw-slider-time .jw-rail{background:rgba(255,255,255,.26)!important}.jwplayer.jw-skin-iptvexpert .jw-slider-time .jw-buffer{background:rgba(255,255,255,.48)!important}.jwplayer.jw-skin-iptvexpert .jw-knob{background:#e50914!important;box-shadow:0 0 0 6px rgba(229,9,20,.18)!important}.jwplayer.jw-skin-iptvexpert .jw-icon:hover{color:#e50914!important}.jwplayer.jw-skin-iptvexpert .jw-button-color{color:#fff!important}.jwplayer.jw-skin-iptvexpert .jw-display-icon-container{background:rgba(229,9,20,.92)!important;border-radius:50%!important;box-shadow:0 18px 55px rgba(229,9,20,.32)!important}.jwplayer.jw-skin-iptvexpert .jw-display-icon-display{color:white!important}.jwplayer.jw-skin-iptvexpert .jw-rightclick{display:none!important}.jwplayer.jw-skin-iptvexpert .jw-settings-menu{background:rgba(10,10,10,.96)!important;border:1px solid rgba(255,255,255,.12)!important;border-radius:14px!important;overflow:hidden!important}.jwplayer.jw-skin-iptvexpert .jw-settings-content-item{color:#fff!important}.jwplayer.jw-skin-iptvexpert .jw-settings-content-item:hover,.jwplayer.jw-skin-iptvexpert .jw-settings-content-item.jw-settings-item-active{color:#e50914!important}
@@ -37,6 +37,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <div id="err"><div id="err-title">تعذر التشغيل</div><div class="err-card">لم نقدر نشغل هذا المصدر الآن. جرّب إعادة التحميل أو استخدم مصدر آخر من لوحة الإدارة.</div><div class="err-actions"><button onclick="location.reload()">إعادة المحاولة</button><a id="err-link" target="_blank" href="#">فتح مصدر بديل</a></div><div id="err-detail"></div></div>
 <div id="player">
   <div id="jwbox"></div>
+  <iframe id="embedFrame" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="origin"></iframe>
   <video id="fallbackVideo" playsinline controls></video>
   <div class="brand-top">
     <button class="back" onclick="history.length>1?history.back():location.href='/'" title="Back">‹</button>
@@ -48,6 +49,7 @@ button{font:inherit;color:inherit;border:0;background:none;cursor:pointer}
 <script>
 var TMDB_KEY='3a73619bbb8fc6d47742d1b5b2b707b5';
 var p=new URLSearchParams(location.search),id=p.get('id'),s=p.get('s'),e=p.get('e'),sub=p.get('sub'),subLabel=p.get('sub_label')||'العربية';
+var USE_DIRECT=(p.get('direct')==='1'||p.get('source')==='direct'||p.get('player')==='jw');
 var MESSAGES=['Loading stream...','جاري تجهيز المشغل...','جاري الاتصال بالمصدر...','جاري تحميل الجودة المناسبة...','لحظات ويبدأ التشغيل...'];
 var msgEl=document.getElementById('loader-text'),msgIdx=0,msgTimer=setInterval(()=>{msgIdx=(msgIdx+1)%MESSAGES.length;msgEl.textContent=MESSAGES[msgIdx]},1900);
 var mediaInfo={title:'IPTV Expert',description:'',image:''};
@@ -55,10 +57,10 @@ var playerInstance=null;
 function isTv(){return !!s}
 function storageKey(){return 'iptvExpertProgress:'+id+(s?':s'+s+':e'+(e||1):'')}
 function getSavedTime(){try{return Number(localStorage.getItem(storageKey())||0)||0}catch(_){return 0}}
-function saveTime(t){try{if(t>5)localStorage.setItem(storageKey(),String(Math.floor(t)))}catch(_){}}
-function toast(t){var el=document.getElementById('toast');el.textContent=t;el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',1200)}
+function saveTime(t){try{if(t>5)localStorage.setItem(storageKey(),String(Math.floor(t)))}catch(_){} }
+function toast(t){var el=document.getElementById('toast');el.textContent=t;el.style.display='block';clearTimeout(el._t);el._t=setTimeout(()=>el.style.display='none',1400)}
 function showPlayer(){clearInterval(msgTimer);document.getElementById('loader').style.display='none';document.getElementById('player').style.display='block'}
-function showErr(msg){clearInterval(msgTimer);document.getElementById('loader').style.display='none';document.getElementById('err').style.display='flex';document.getElementById('err-detail').textContent=msg||'';document.getElementById('err-link').href=s?'https://vidlink.pro/tv/'+id+'/'+s+'/'+(e||1):'https://vidlink.pro/movie/'+id}
+function showErr(msg){clearInterval(msgTimer);document.getElementById('loader').style.display='none';document.getElementById('err').style.display='flex';document.getElementById('err-detail').textContent=msg||'';document.getElementById('err-link').href=buildVidLinkUrl(false)}
 function isArabicLabel(v){v=String(v||'').toLowerCase();return v==='ar'||v.startsWith('ar-')||v.includes('arabic')||v.includes('arab')||v.includes('عرب')||v.includes('العربية')}
 function normalizeTrack(t,i){
   if(!t||!t.file) return null;
@@ -105,6 +107,51 @@ async function loadMeta(){
     }
   }catch(_){ }
 }
+function buildVidLinkUrl(withProgress){
+  if(!id) return '#';
+  var base=isTv()?('https://vidlink.pro/tv/'+encodeURIComponent(id)+'/'+encodeURIComponent(s||1)+'/'+encodeURIComponent(e||1)):('https://vidlink.pro/movie/'+encodeURIComponent(id));
+  var q=new URLSearchParams({
+    primaryColor:'ca0c0c',
+    secondaryColor:'2a2a2a',
+    iconColor:'eefdec',
+    icons:'vid',
+    player:'default',
+    title:'true',
+    poster:'true',
+    autoplay:'true',
+    nextbutton:'true'
+  });
+  var saved=getSavedTime();
+  if(withProgress && saved>8) q.set('startAt', String(saved));
+  if(sub){ q.set('sub_file', sub); q.set('sub_label', subLabel || 'العربية'); }
+  return base+'?'+q.toString();
+}
+function setupVidLink(){
+  showPlayer();
+  try{ if(playerInstance) playerInstance.remove(); }catch(_){ }
+  document.getElementById('jwbox').style.display='none';
+  document.getElementById('fallbackVideo').style.display='none';
+  var frame=document.getElementById('embedFrame');
+  frame.style.display='block';
+  frame.src=buildVidLinkUrl(true);
+  toast('VidLink Player');
+}
+window.addEventListener('message', function(event){
+  if(event.origin !== 'https://vidlink.pro') return;
+  var data = event.data || {};
+  try{
+    if(data.type === 'MEDIA_DATA' && data.data){
+      var md=data.data;
+      var watched=(md.progress && (md.progress.watched || md.progress.currentTime)) || md.currentTime || 0;
+      saveTime(Number(watched)||0);
+    }
+    if(data.type === 'PLAYER_EVENT' && data.data){
+      var ev=data.data;
+      if(ev.event === 'timeupdate' || ev.event === 'pause' || ev.event === 'seeked') saveTime(Number(ev.currentTime)||0);
+      if(ev.event === 'ended') try{localStorage.removeItem(storageKey())}catch(_){}
+    }
+  }catch(_){ }
+});
 async function resolveStream(){
   var r=await fetch('/api?'+(isTv()?'id='+encodeURIComponent(id)+'&s='+encodeURIComponent(s)+'&e='+encodeURIComponent(e||1):'id='+encodeURIComponent(id)));
   var d=await r.json();
@@ -115,6 +162,7 @@ async function resolveStream(){
 function setupJW(stream){
   if(typeof window.jwplayer!=='function') throw new Error('JW Player library not loaded');
   showPlayer();
+  document.getElementById('embedFrame').style.display='none';
   var src=stream.playUrl;
   var kind=inferType(stream.rawUrl,src);
   var source={file:src};
@@ -123,18 +171,8 @@ function setupJW(stream){
   playerInstance=jwplayer('jwbox');
   playerInstance.setup({
     playlist:[{title:mediaInfo.title,description:mediaInfo.description,image:mediaInfo.image,sources:[source],tracks:stream.tracks||[]}],
-    width:'100%',
-    height:'100%',
-    autostart:true,
-    preload:'auto',
-    controls:true,
-    repeat:false,
-    stretching:'uniform',
-    primary:'html5',
-    playbackRateControls:true,
-    cast:{},
-    pipIcon:'enabled',
-    skin:{name:'iptvexpert'},
+    width:'100%',height:'100%',autostart:true,preload:'auto',controls:true,repeat:false,stretching:'uniform',primary:'html5',
+    playbackRateControls:true,cast:{},pipIcon:'enabled',skin:{name:'iptvexpert'},
     captions:{color:'#ffffff',fontSize:20,backgroundOpacity:45,edgeStyle:'dropshadow'},
     intl:{ar:{play:'تشغيل',pause:'إيقاف',fullscreen:'ملء الشاشة',settings:'الإعدادات',captions:'الترجمة',quality:'الجودة'}},
     localization:{locale:'ar'}
@@ -144,28 +182,11 @@ function setupJW(stream){
     if(t>8){setTimeout(()=>{try{playerInstance.seek(t);toast('تم الاستكمال من '+Math.floor(t/60)+':'+String(t%60).padStart(2,'0'))}catch(_){ }},900)}
     try{document.querySelector('#jwbox').classList.add('jw-skin-iptvexpert')}catch(_){ }
   });
-  playerInstance.on('captionsList',function(ev){
-    try{
-      var list=ev.tracks||[];
-      var arIndex=list.findIndex(function(x){return isArabicLabel(x.label)||isArabicLabel(x.language)||isArabicLabel(x.srclang)});
-      if(arIndex>=0){setTimeout(function(){try{playerInstance.setCurrentCaptions(arIndex)}catch(_){ }},500)}
-    }catch(_){ }
-  });
+  playerInstance.on('captionsList',function(ev){try{var list=ev.tracks||[];var arIndex=list.findIndex(function(x){return isArabicLabel(x.label)||isArabicLabel(x.language)||isArabicLabel(x.srclang)});if(arIndex>=0)setTimeout(function(){try{playerInstance.setCurrentCaptions(arIndex)}catch(_){ }},500)}catch(_){ }});
   playerInstance.on('time',function(ev){saveTime(ev.position||0)});
   playerInstance.on('complete',function(){try{localStorage.removeItem(storageKey())}catch(_){}});
-  playerInstance.on('error',function(ev){retryWithoutForcedType(stream,'JW error: '+(ev.message||ev.code||''))});
-  playerInstance.on('setupError',function(ev){retryWithoutForcedType(stream,'JW setup error: '+(ev.message||''))});
-}
-function retryWithoutForcedType(stream,reason){
-  try{if(playerInstance)playerInstance.remove()}catch(_){ }
-  var source={file:stream.playUrl};
-  try{
-    playerInstance=jwplayer('jwbox');
-    playerInstance.setup({playlist:[{title:mediaInfo.title,description:mediaInfo.description,image:mediaInfo.image,sources:[source],tracks:stream.tracks||[]}],width:'100%',height:'100%',autostart:true,controls:true,primary:'html5',playbackRateControls:true,skin:{name:'iptvexpert'},captions:{color:'#ffffff',fontSize:20,backgroundOpacity:45,edgeStyle:'dropshadow'}});
-    playerInstance.on('time',function(ev){saveTime(ev.position||0)});
-    playerInstance.on('captionsList',function(ev){try{var i=(ev.tracks||[]).findIndex(x=>isArabicLabel(x.label)||isArabicLabel(x.language));if(i>=0)setTimeout(()=>playerInstance.setCurrentCaptions(i),500)}catch(_){}});
-    playerInstance.on('error',function(){fallbackNative(stream.playUrl,reason)});
-  }catch(e){fallbackNative(stream.playUrl,reason+' / '+e.message)}
+  playerInstance.on('error',function(ev){fallbackNative(stream.playUrl,'JW error: '+(ev.message||ev.code||''))});
+  playerInstance.on('setupError',function(ev){fallbackNative(stream.playUrl,'JW setup error: '+(ev.message||''))});
 }
 function fallbackNative(src,reason){
   try{if(playerInstance)playerInstance.remove()}catch(_){ }
@@ -180,7 +201,11 @@ function fallbackNative(src,reason){
 }
 (async function(){
   if(!id){clearInterval(msgTimer);document.getElementById('loader').style.display='none';document.getElementById('usage').style.display='flex';return}
-  try{await loadMeta();var stream=await resolveStream();setupJW(stream)}catch(err){showErr(err.message)}
+  try{
+    await loadMeta();
+    if(USE_DIRECT){ var stream=await resolveStream(); setupJW(stream); }
+    else setupVidLink();
+  }catch(err){showErr(err.message)}
 })();
 </script>
 </body>

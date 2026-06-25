@@ -39,14 +39,47 @@ function bootWasm() {
 }
 
 // ── Stream URL resolver ───────────────────────────────────────────────────────
+
+function normalizeTrack(t, i = 0) {
+  if (!t || typeof t !== 'object') return null;
+  const file = t.file || t.url || t.src || t.link;
+  if (!file) return null;
+  const label = t.label || t.lang || t.language || t.name || `Subtitle ${i + 1}`;
+  const lower = String(label).toLowerCase();
+  const lang = t.srclang || t.lang || t.language || (lower.includes('arab') || lower.includes('عرب') || lower === 'ar' ? 'ar' : '');
+  return {
+    file,
+    label: String(label),
+    kind: 'captions',
+    default: lower.includes('arab') || lower.includes('عرب') || lower === 'ar' || String(lang).toLowerCase().startsWith('ar'),
+    srclang: lang || undefined
+  };
+}
+
+function extractSubtitleTracks(data) {
+  const buckets = [];
+  const push = (v) => { if (Array.isArray(v)) buckets.push(...v); };
+  push(data?.subtitles);
+  push(data?.captions);
+  push(data?.tracks);
+  push(data?.stream?.subtitles);
+  push(data?.stream?.captions);
+  push(data?.stream?.tracks);
+  push(data?.media?.subtitles);
+  const tracks = buckets.map(normalizeTrack).filter(Boolean);
+  tracks.sort((a, b) => Number(Boolean(b.default)) - Number(Boolean(a.default)));
+  if (tracks[0]) tracks[0].default = true;
+  return tracks;
+}
+
 async function getStream(id, season, episode) {
   await bootWasm();
   const token = globalThis.getAdv(String(id));
   if (!token) throw new Error('getAdv returned null');
 
   const apiUrl = season
-    ? `https://vidlink.pro/api/b/tv/${token}/${season}/${episode || 1}?multiLang=0`
-    : `https://vidlink.pro/api/b/movie/${token}?multiLang=0`;
+    ? `https://vidlink.pro/api/b/tv/${token}/${season}/${episode || 1}?multiLang=1`
+    : `https://vidlink.pro/api/b/movie/${token}?multiLang=1`;
 
   const res = await fetch(apiUrl, {
     headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': UA }
@@ -55,8 +88,9 @@ async function getStream(id, season, episode) {
   const data = await res.json();
   const playlist = data?.stream?.playlist;
   if (!playlist) throw new Error('No playlist in response');
-  return playlist;
+  return { url: playlist, tracks: extractSubtitleTracks(data), rawType: data?.stream?.type || '' };
 }
+
 
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
 function fetchUpstream(url, redirects = 0) {
