@@ -1,11 +1,21 @@
 'use strict';
+try {
+  const envPath = require('path').join(__dirname, '.env');
+  if (require('fs').existsSync(envPath)) {
+    const lines = require('fs').readFileSync(envPath, 'utf8').split(/\r?\n/);
+    for (const line of lines) {
+      const m = line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)\s*$/);
+      if (m && process.env[m[1]] === undefined) process.env[m[1]] = m[2].replace(/^['"]|['"]$/g, '');
+    }
+  }
+} catch (_) {}
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const apiHandler = require('./api/index.js');
 const PORT = Number(process.env.PORT || 8090);
 const root = __dirname;
-const types = {'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.wasm':'application/wasm','.gif':'image/gif','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg'};
+const types = {'.html':'text/html; charset=utf-8','.js':'application/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.vtt':'text/vtt; charset=utf-8','.wasm':'application/wasm','.gif':'image/gif','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg'};
 function sendFile(res, file){
   fs.readFile(file,(err,data)=>{
     if(err){res.writeHead(404,{'Content-Type':'text/plain; charset=utf-8'});return res.end('Not found')}

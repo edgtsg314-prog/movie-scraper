@@ -120,12 +120,172 @@ function rewriteM3u8(body, url) {
   }).join('\n');
 }
 
+
+// ── OpenSubtitles Arabic subtitles ────────────────────────────────────────────
+const TMDB_API_KEY = process.env.TMDB_API_KEY || '3a73619bbb8fc6d47742d1b5b2b707b5';
+const OS_API_KEY = process.env.OPENSUBTITLES_API_KEY || 'W8SxuyZGOok0S2YIF2ZV4PBBYoVUJDTf';
+const OS_USERNAME = process.env.OPENSUBTITLES_USERNAME || 'adwameshari';
+const OS_PASSWORD = process.env.OPENSUBTITLES_PASSWORD || 'MESHARI';
+const OS_USER_AGENT = process.env.OPENSUBTITLES_USER_AGENT || 'IPTVExpert v1.0';
+const SUB_LANG = 'ar';
+const SUB_DIR = path.join(__dirname, '..', 'subtitles');
+
+let osToken = '';
+let osTokenAt = 0;
+
+function ensureDirSync(dir) {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+}
+
+function srtToVtt(srt) {
+  let txt = String(srt || '').replace(/^\uFEFF/, '').replace(/\r+/g, '');
+  txt = txt.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2');
+  if (!txt.trim().startsWith('WEBVTT')) txt = 'WEBVTT\n\n' + txt;
+  return txt;
+}
+
+async function fetchJson(url, options = {}) {
+  const r = await fetch(url, options);
+  const body = await r.text();
+  let data = {};
+  try { data = body ? JSON.parse(body) : {}; } catch (_) { data = { raw: body }; }
+  if (!r.ok) throw new Error((data && (data.message || data.error)) || ('HTTP ' + r.status));
+  return data;
+}
+
+async function osLogin() {
+  if (osToken && (Date.now() - osTokenAt) < 20 * 60 * 1000) return osToken;
+  if (!OS_API_KEY || !OS_USERNAME || !OS_PASSWORD) throw new Error('OpenSubtitles credentials missing');
+  const data = await fetchJson('https://api.opensubtitles.com/api/v1/login', {
+    method: 'POST',
+    headers: {
+      'Api-Key': OS_API_KEY,
+      'User-Agent': OS_USER_AGENT,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({ username: OS_USERNAME, password: OS_PASSWORD })
+  });
+  osToken = data.token || '';
+  osTokenAt = Date.now();
+  if (!osToken) throw new Error('OpenSubtitles login did not return token');
+  return osToken;
+}
+
+async function getTmdbExternalId(id, season, episode) {
+  const type = season ? 'tv' : 'movie';
+  if (!TMDB_API_KEY) return '';
+  const url = `https://api.themoviedb.org/3/${type}/${encodeURIComponent(id)}/external_ids?api_key=${TMDB_API_KEY}`;
+  const data = await fetchJson(url, { headers: { 'Accept': 'application/json' } });
+  return data.imdb_id || '';
+}
+
+function subtitleLocalPath(id, season, episode) {
+  if (season) return path.join(SUB_DIR, 'tv', String(id), String(season), `${episode || 1}.vtt`);
+  return path.join(SUB_DIR, 'movie', String(id), 'ar.vtt');
+}
+
+function subtitlePublicUrl(id, season, episode) {
+  if (season) return `/subtitles/tv/${encodeURIComponent(id)}/${encodeURIComponent(season)}/${encodeURIComponent(episode || 1)}.vtt`;
+  return `/subtitles/movie/${encodeURIComponent(id)}/ar.vtt`;
+}
+
+function chooseBestArabicSubtitle(items) {
+  const list = Array.isArray(items) ? items : [];
+  return list
+    .filter(x => x && x.attributes)
+    .sort((a, b) => {
+      const A = a.attributes || {}, B = b.attributes || {};
+      const ad = Number(A.download_count || 0), bd = Number(B.download_count || 0);
+      const ar = Number(A.ratings || 0), br = Number(B.ratings || 0);
+      return (br * 1000 + bd) - (ar * 1000 + ad);
+    })[0] || null;
+}
+
+async function downloadOpenSubtitlesFile(fileId) {
+  const token = await osLogin();
+  const data = await fetchJson('https://api.opensubtitles.com/api/v1/download', {
+    method: 'POST',
+    headers: {
+      'Api-Key': OS_API_KEY,
+      'Authorization': 'Bearer ' + token,
+      'User-Agent': OS_USER_AGENT,
+      'Content-Type': 'application/json',
+      'Accept': 'application/json'
+    },
+    body: JSON.stringify({ file_id: fileId, sub_format: 'srt' })
+  });
+  if (!data.link) throw new Error('OpenSubtitles did not return download link');
+  const r = await fetch(data.link, { headers: { 'User-Agent': OS_USER_AGENT } });
+  if (!r.ok) throw new Error('Subtitle download failed: ' + r.status);
+  return await r.text();
+}
+
+async function findArabicSubtitle(id, season, episode) {
+  const imdb = await getTmdbExternalId(id, season, episode);
+  const qs = new URLSearchParams({ languages: SUB_LANG });
+  if (imdb) qs.set('imdb_id', String(imdb).replace(/^tt/i, ''));
+  else {
+    // fallback by TMDB id if IMDb is unavailable
+    qs.set(season ? 'tmdb_id' : 'tmdb_id', String(id));
+  }
+  if (season) {
+    qs.set('season_number', String(season));
+    qs.set('episode_number', String(episode || 1));
+    qs.set('type', 'episode');
+  } else {
+    qs.set('type', 'movie');
+  }
+  const url = 'https://api.opensubtitles.com/api/v1/subtitles?' + qs.toString();
+  const data = await fetchJson(url, {
+    headers: {
+      'Api-Key': OS_API_KEY,
+      'User-Agent': OS_USER_AGENT,
+      'Accept': 'application/json'
+    }
+  });
+  const best = chooseBestArabicSubtitle(data.data);
+  if (!best) return null;
+  const files = best.attributes && best.attributes.files;
+  const fileId = files && files[0] && files[0].file_id;
+  if (!fileId) return null;
+  const srt = await downloadOpenSubtitlesFile(fileId);
+  return srtToVtt(srt);
+}
+
+async function getArabicSubtitle(id, season, episode, force = false) {
+  const local = subtitleLocalPath(id, season, episode);
+  const publicUrl = subtitlePublicUrl(id, season, episode);
+  if (!force && fs.existsSync(local) && fs.statSync(local).size > 20) {
+    return { ok: true, cached: true, url: publicUrl, label: 'العربية', srclang: 'ar' };
+  }
+  ensureDirSync(path.dirname(local));
+  const vtt = await findArabicSubtitle(id, season, episode);
+  if (!vtt) return { ok: false, error: 'لا توجد ترجمة عربية متوفرة لهذا المحتوى' };
+  fs.writeFileSync(local, vtt, 'utf8');
+  return { ok: true, cached: false, url: publicUrl, label: 'العربية', srclang: 'ar' };
+}
+
 // ── Vercel serverless handler ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
 
   const { searchParams } = new URL(req.url, 'http://localhost');
   const q = Object.fromEntries(searchParams);
+
+
+  // Arabic subtitle lookup/download: /api?subtitle=1&id=...&s=...&e=...&force=1
+  if (q.subtitle === '1') {
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    try {
+      if (!q.id) throw new Error('missing id');
+      const result = await getArabicSubtitle(q.id, q.s, q.e, q.force === '1');
+      return res.end(JSON.stringify(result));
+    } catch (err) {
+      res.statusCode = 500;
+      return res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+  }
 
   // Proxy mode: /api?url=...
   if (q.url) {
@@ -163,8 +323,8 @@ module.exports = async function handler(req, res) {
 
   res.setHeader('Content-Type', 'application/json');
   try {
-    const url = await getStream(q.id, q.s, q.e);
-    res.end(JSON.stringify({ url }));
+    const stream = await getStream(q.id, q.s, q.e);
+    res.end(JSON.stringify(stream));
   } catch (err) {
     res.statusCode = 500;
     res.end(JSON.stringify({ error: err.message }));
