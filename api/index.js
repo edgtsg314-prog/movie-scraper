@@ -100,12 +100,38 @@ function srtTimeToVtt(t) {
 }
 
 function srtToVtt(srt) {
-  let body = String(srt || '').replace(/^\uFEFF/, '').replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-  body = body.replace(/(\d{2}:\d{2}:\d{2}),([0-9]{3})/g, '$1.$2');
-  // remove numeric cue counters when they are alone on a line
-  body = body.replace(/^\d+\n(?=\d{2}:\d{2}:\d{2}\.\d{3}\s+-->)/gm, '');
-  if (!body.trim().startsWith('WEBVTT')) body = 'WEBVTT\n\n' + body.trim() + '\n';
-  return body;
+  let body = String(srt || '')
+    .replace(/^\uFEFF/, '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .replace(/<\/?(font|b|i|u|c|span)[^>]*>/gi, '')
+    .replace(/\{\\[^}]+\}/g, '')
+    .replace(/\{[^}]+\}/g, '');
+
+  // Some Arabic SRT files start with credits/title lines before the first cue.
+  // WebVTT must start cleanly with WEBVTT then cues, so strip anything before
+  // the first real timestamp. This is why subtitles could be downloaded but not displayed.
+  const firstTime = body.search(/\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/);
+  if (firstTime > 0) body = body.slice(firstTime);
+
+  // Normalize timestamp format to WebVTT HH:MM:SS.mmm.
+  body = body.replace(/(\d{1,2}:\d{2}:\d{2}),(\d{1,3})/g, (_, a, ms) => `${a}.${String(ms).padEnd(3, '0').slice(0,3)}`);
+
+  const lines = body.split('\n');
+  const out = ['WEBVTT', ''];
+  for (let line of lines) {
+    const t = line.trim();
+    // remove numeric SRT cue counters
+    if (/^\d+$/.test(t)) continue;
+    if (!t) { out.push(''); continue; }
+    // remove unsupported SRT coordinate settings after timestamp if present
+    if (/\d{1,2}:\d{2}:\d{2}\.\d{3}\s*-->/.test(t)) {
+      line = t.replace(/\s+X1:\d+\s+X2:\d+\s+Y1:\d+\s+Y2:\d+/gi, '');
+    }
+    out.push(line);
+  }
+
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim() + '\n';
 }
 
 async function tmdbJson(endpoint) {
