@@ -4,12 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Stream</title>
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
-
-<!-- ── 1. استدعاء ملفات المشغل الأنيق Plyr لتغيير المظهر ── -->
-<link rel="stylesheet" href="https://plyr.io" />
-<script src="https://plyr.io"></script>
-
+<script src="https://jsdelivr.net"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; background: #000; font-family: system-ui, sans-serif; color: #fff; overflow: hidden; }
@@ -27,7 +22,7 @@ html, body { width: 100%; height: 100%; background: #000; font-family: system-ui
   position: relative; z-index: 1;
   width: 72px; height: 72px;
   border: 5px solid rgba(255,255,255,.15);
-  border-top-color: #63b8bc; border-radius: 50%; /* تلوين حلقة التحميل بالأزرق */
+  border-top-color: #63b8bc; border-radius: 50%; /* تلوين حلقة التحميل باللون الأزرق الخاص بك */
   animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -56,12 +51,19 @@ video { width: 100%; height: 100%; display: block; }
   max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
 }
 
-/* ── 2. تلوين وتغيير مظهر المشغل ليكون مثل مشغل الألوان المخصص ── */
-:root {
-  --plyr-color-main: #63b8bc !important; /* لون الأزرار وشريط التقدم بالأزرق */
-  --plyr-video-control-background-hover: rgba(99, 184, 188, 0.2) !important;
+/* ── تعديل ألوان مشغل الفيديو الافتراضي لتطابق اللون الأزرق المخصص ── */
+video::-webkit-media-controls-panel {
+  background-image: linear-gradient(transparent, rgba(0,0,0,0.8)) !important;
 }
-.plyr--video { height: 100% !important; width: 100% !important; }
+video::-webkit-media-controls-play-button,
+video::-webkit-media-controls-current-time-display,
+video::-webkit-media-controls-time-remaining-display,
+video::-webkit-media-controls-timeline,
+video::-webkit-media-controls-volume-slider,
+video::-webkit-media-controls-mute-button,
+video::-webkit-media-controls-fullscreen-button {
+  filter: sepia(100%) saturate(300%) hue-rotate(130deg) brightness(100%) contrast(100%) !important;
+}
 </style>
 </head>
 <body>
@@ -114,14 +116,6 @@ function showPlayer() {
   clearInterval(msgTimer);
   document.getElementById('loader').style.display = 'none';
   document.getElementById('player').style.display = 'block';
-  
-  // ── 3. تشغيل مظهر المشغل الأنيق وتفعيله تلقائياً فور جاهزية البث ──
-  if (!window.customPlayerInitialized) {
-      window.customPlayerInitialized = true;
-      new Plyr('#v', {
-          captions: { active: true, update: true }
-      });
-  }
 }
 
 function showErr(msg) {
@@ -130,19 +124,19 @@ function showErr(msg) {
   document.getElementById('err').style.display = 'flex';
   document.getElementById('err-detail').textContent = msg || '';
   var vidsrcUrl = s
-    ? 'https://vidsrc.xyz/embed/tv?tmdb=' + id + '&season=' + s + '&episode=' + (e || '1')
-    : 'https://vidsrc.xyz/embed/movie?tmdb=' + id;
+    ? 'https://vidsrc.xyz' + id + '&season=' + s + '&episode=' + (e || '1')
+    : 'https://vidsrc.xyz' + id;
   document.getElementById('err-link').href = vidsrcUrl;
 }
 
 function loadBackdrop(id, isTv) {
   var type = isTv ? 'tv' : 'movie';
-  fetch('https://api.themoviedb.org/3/' + type + '/' + id + '?api_key=' + TMDB_KEY)
+  fetch('https://themoviedb.org' + type + '/' + id + '?api_key=' + TMDB_KEY)
     .then(function(r) { return r.json(); })
     .then(function(d) {
       var img = d.backdrop_path || d.poster_path;
       if (!img) return;
-      var url = 'https://wsrv.nl/?url=' + encodeURIComponent('https://image.tmdb.org/t/p/w1280' + img) + '&bg=black&blur=3';
+      var url = 'https://wsrv.nl' + encodeURIComponent('https://tmdb.org' + img) + '&bg=black&blur=3';
       var bg = document.getElementById('loader-bg');
       var preload = new Image();
       preload.onload = function() { bg.style.backgroundImage = 'url(' + url + ')'; bg.style.opacity = '1'; };
