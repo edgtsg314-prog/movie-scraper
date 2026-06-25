@@ -17,7 +17,7 @@ function sendFile(res, file, type) {
 http.createServer((req, res) => {
   if (req.url.startsWith('/api')) return api(req, res);
   const pathname = decodeURIComponent(new URL(req.url, 'http://localhost').pathname);
-  if (pathname === '/' || pathname === '/index.html') return sendFile(res, path.join(__dirname, 'index.html'), 'text/html; charset=utf-8');
+  if (pathname === '/' || pathname === '/index.html' || pathname.startsWith('/id=')) return sendFile(res, path.join(__dirname, 'index.html'), 'text/html; charset=utf-8');
   const file = path.join(__dirname, pathname.replace(/^\/+/, ''));
   if (!file.startsWith(__dirname)) { res.writeHead(403); return res.end('Forbidden'); }
   const ext = path.extname(file).toLowerCase();
