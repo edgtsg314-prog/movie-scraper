@@ -21,7 +21,7 @@ html, body { width: 100%; height: 100%; background: #000; font-family: system-ui
   position: relative; z-index: 1;
   width: 72px; height: 72px;
   border: 5px solid rgba(255,255,255,.15);
-  border-top-color: #63b8bc; border-radius: 50%;
+  border-top-color: #3b82f6; border-radius: 50%; /* تلوين حلقة التحميل */
   animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -55,6 +55,7 @@ iframe { width: 100%; height: 100%; display: block; border: 0; }
 </div>
 
 <div id="player">
+  <!-- المشغل البديل والمستقر vidsrc -->
   <iframe id="v" allowfullscreen allow="autoplay; encrypted-media"></iframe>
 </div>
 
@@ -71,7 +72,6 @@ function showPlayer() {
 
 function loadBackdrop(id, isTv) {
   var type = isTv ? 'tv' : 'movie';
-  // تصحيح الرابط لضمان جلب صور الخلفية بشكل سليم بنسبة 100%
   fetch('https://themoviedb.org' + type + '/' + id + '?api_key=' + TMDB_KEY)
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -92,18 +92,15 @@ if (!id) {
 } else {
   loadBackdrop(id, !!s);
   
-  // بناء مسار المشغل المباشر المستقر وتخطي حظر الـ Backend تماماً
-  let targetUrl = s 
-      ? 'https://vidlink.pro' + id + '/' + s + '/' + (e || '1')
-      : 'https://vidlink.pro' + id;
-
-  // حقن اللون الأزرق الاحترافي وزر الحلقة التالية والترجمة تلقائياً من المصدر الأساسي لـ VidLink
-  targetUrl += '?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true';
+  // بناء مسار السيرفر البديل المستقر حلياً لتخطي توقف ونقص الـ DNS في السيرفر الأول
+  var targetUrl = s 
+      ? 'https://vidsrc.xyz' + id + '&season=' + s + '&episode=' + (e || '1')
+      : 'https://vidsrc.xyz' + id;
 
   const iframe = document.getElementById('v');
   iframe.src = targetUrl;
 
-  // تشغيل واجهة الميديا فورا وبدون تأخير
+  // تشغيل واجهة العرض فور انتهاء تحميل مشغل vidsrc المستقر
   iframe.onload = function() {
       showPlayer();
   };
