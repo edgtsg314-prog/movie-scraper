@@ -40,6 +40,10 @@ video::cue(b){font-weight:800}
 @media(max-width:760px){.topbar{height:88px!important}.top-actions{top:calc(14px + var(--safe-top))!important;left:calc(14px + var(--safe-left))!important;gap:7px!important;padding:8px 10px!important}.tool{width:38px!important;height:38px!important;font-size:21px!important}.close{top:calc(12px + var(--safe-top))!important;right:calc(14px + var(--safe-right))!important;width:58px!important;height:58px!important;font-size:40px!important}.title{top:calc(16px + var(--safe-top))!important;max-width:calc(100vw - 190px)!important}.title h1{font-size:19px!important}.title p{font-size:12px!important}.controls{padding-left:calc(14px + var(--safe-left))!important;padding-right:calc(14px + var(--safe-right))!important;padding-bottom:calc(16px + var(--safe-bottom))!important}.progress-wrap{height:34px!important}.row{height:54px!important}.ctrl{width:46px!important;height:46px!important}.time{font-size:12px!important;min-width:112px!important;margin-inline-start:10px!important}.vol{display:none!important}.bigplay{width:78px!important;height:78px!important}.skip{width:58px!important;height:58px!important}#subtitleOverlay{bottom:calc(104px + var(--safe-bottom))!important;font-size:24px!important}.menu{left:calc(14px + var(--safe-left))!important;top:calc(70px + var(--safe-top))!important}}
 @media(max-height:520px) and (orientation:landscape){.topbar{height:76px!important}.top-actions{top:calc(12px + var(--safe-top))!important;left:calc(24px + var(--safe-left))!important;padding:7px 12px!important}.close{top:calc(10px + var(--safe-top))!important;right:calc(24px + var(--safe-right))!important;width:58px!important;height:58px!important}.tool{width:38px!important;height:38px!important;font-size:22px!important}.title{top:calc(13px + var(--safe-top))!important}.title h1{font-size:21px!important}.title p{font-size:12px!important;margin-top:2px!important}.controls{padding-left:calc(36px + var(--safe-left))!important;padding-right:calc(36px + var(--safe-right))!important;padding-bottom:calc(16px + var(--safe-bottom))!important}.progress-wrap{height:34px!important}.bigplay{width:82px!important;height:82px!important}.skip{width:60px!important;height:60px!important}#subtitleOverlay{bottom:calc(88px + var(--safe-bottom))!important;font-size:26px!important}.menu{top:calc(72px + var(--safe-top))!important;left:calc(24px + var(--safe-left))!important;max-height:calc(100vh - 86px)!important}}
 
+
+/* Final reference-like fullscreen player polish */
+body{overscroll-behavior:none!important}#app{overflow:hidden!important}.progress-wrap{height:58px!important;padding:16px 0!important}.progress{height:7px!important;touch-action:none!important;cursor:grab!important}.progress:active{cursor:grabbing!important}.progress::before{content:"";position:absolute;left:0;right:0;top:-22px;bottom:-22px}.row{pointer-events:none!important}.left,.right{pointer-events:auto!important}.right{display:none!important}.left .ctrl:not(#play):not(#mute),.left .vol{display:none!important}.left{gap:14px!important}.time{position:fixed!important;left:calc(56px + var(--safe-left,0px))!important;bottom:calc(104px + var(--safe-bottom,0px))!important;min-width:auto!important;font-size:20px!important;font-weight:900!important;text-shadow:0 2px 8px #000!important}.controls{padding-bottom:calc(64px + var(--safe-bottom,0px))!important}.center-controls{top:52%!important}.hidden-ui .controls,.hidden-ui .topbar,.hidden-ui .close,.hidden-ui .center-controls{opacity:1!important;pointer-events:auto!important}@media(max-height:520px) and (orientation:landscape){.controls{padding-left:calc(118px + var(--safe-left,0px))!important;padding-right:calc(178px + var(--safe-right,0px))!important;padding-bottom:calc(42px + var(--safe-bottom,0px))!important}.time{left:calc(132px + var(--safe-left,0px))!important;bottom:calc(78px + var(--safe-bottom,0px))!important}.center-controls{left:83%!important;top:56%!important}.bigplay{display:none!important}.skip{width:64px!important;height:64px!important;font-size:0!important}.skip::before{font-size:34px!important}.skip#rew::before{content:"⏮"}.skip#fwd::before{content:"⏭"}.top-actions{left:calc(138px + var(--safe-left,0px))!important}.close{right:calc(138px + var(--safe-right,0px))!important}.title{top:calc(28px + var(--safe-top,0px))!important}.title h1{font-size:20px!important}.title p{font-size:15px!important}}
+
 </style>
 </head>
 <body>
@@ -178,25 +182,72 @@ async function fetchArabicSubtitle(choice=selectedSubtitleChoice){
     return false;
   }
 }
-async function start(){if(!id){showErr('استخدم ?id=550 أو ?id=456&s=1&e=1');return}await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playStream(d.url)}catch(err){showErr(err.message)}}
+function notifyParentClose(){
+  try{
+    if(window.parent && window.parent !== window){
+      window.parent.postMessage({type:'PLAYER_CLOSE', source:'iptv-expert-player'}, '*');
+      return true;
+    }
+  }catch(_){ }
+  return false;
+}
+function safeExitPlayer(){
+  try{v.pause(); v.removeAttribute('src'); v.load();}catch(_){ }
+  if(notifyParentClose()) return;
+  const ret=p.get('return')||p.get('back')||p.get('returnUrl');
+  if(ret){ try{ location.replace(new URL(ret, location.href).toString()); return; }catch(_){ } }
+  if(document.referrer){
+    try{
+      const r=new URL(document.referrer);
+      const here=new URL(location.href);
+      if(r.href!==here.href && !r.searchParams.has('id')){ location.replace(r.href); return; }
+    }catch(_){ }
+  }
+  if(history.length>1){ history.back(); setTimeout(()=>{ if(location.search.includes('id=')) location.replace('/admin'); }, 650); return; }
+  location.replace('/admin');
+}
+async function start(){if(!id){
+  // لا نترك الشاشة سوداء إذا فُتح المشغل بدون ID بعد الرجوع/الإغلاق.
+  if(notifyParentClose()) return;
+  document.body.innerHTML='<div style="height:100svh;display:grid;place-items:center;background:#000;color:#fff;font-family:system-ui;text-align:center"><div><h2>تم إغلاق المشغل</h2><button onclick="location.replace('/admin')" style="margin-top:16px;background:#e50914;color:#fff;border:0;border-radius:14px;padding:12px 22px;font-weight:800">العودة</button></div></div>';
+  return;
+}await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playStream(d.url)}catch(err){showErr(err.message)}}
 function playStream(raw){const src='/api?url='+encodeURIComponent(raw);if(Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:false});hls.loadSource(src);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];loader.style.display='none';restoreProgress();v.play().catch(()=>{});renderQualityMenu()});hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal)showErr(data.details||'HLS error')})}else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true})}else showErr('المتصفح لا يدعم HLS')}
 function restoreProgress(){let t=Number(localStorage.getItem(storageKey)||0);if(t>20&&isFinite(t))v.currentTime=t}
 setInterval(()=>{if(v.currentTime>5)localStorage.setItem(storageKey,String(v.currentTime))},2500);
 function sync(){let d=v.duration||0,c=v.currentTime||0,pct=d?c/d*100:0;bar.style.width=pct+'%';knob.style.left=pct+'%';timeEl.textContent=fmt(c)+' / '+fmt(d);updateSubtitleOverlay();try{if(v.buffered.length&&d){let b=v.buffered.end(v.buffered.length-1)/d*100;buffer.style.width=Math.min(100,b)+'%'}}catch(_){}}
 v.addEventListener('timeupdate',sync);v.addEventListener('durationchange',sync);v.addEventListener('play',()=>{playBtn.textContent='❚❚';big.textContent='❚❚';setVisible()});v.addEventListener('pause',()=>{playBtn.textContent='▶';big.textContent='▶';setVisible()});
 function toggle(){v.paused?v.play().catch(()=>{}):v.pause()}playBtn.onclick=big.onclick=toggle;stage.onclick=(ev)=>{if(ev.target===stage||ev.target===v)toggle()};rew.onclick=()=>v.currentTime=Math.max(0,v.currentTime-10);fwd.onclick=()=>v.currentTime=Math.min(v.duration||Infinity,v.currentTime+10);mute.onclick=()=>{v.muted=!v.muted;mute.textContent=v.muted?'🔇':'🔊'};vol.oninput=()=>{v.volume=Number(vol.value);v.muted=v.volume===0};
-function seekFromPointer(ev){const r=progress.getBoundingClientRect();const x=Math.max(0,Math.min(r.width,ev.clientX-r.left));const d=v.duration||0;if(d)v.currentTime=(x/r.width)*d;sync();}
+function pointerClientX(ev){
+  if(ev.touches && ev.touches[0]) return ev.touches[0].clientX;
+  if(ev.changedTouches && ev.changedTouches[0]) return ev.changedTouches[0].clientX;
+  return ev.clientX;
+}
+function seekFromPointer(ev){
+  const d=Number(v.duration||0);
+  if(!Number.isFinite(d) || d<=0) return;
+  const r=progress.getBoundingClientRect();
+  const x=Math.max(0,Math.min(r.width,pointerClientX(ev)-r.left));
+  v.currentTime=(x/r.width)*d;
+  sync();
+}
 let draggingSeek=false;
-progress.addEventListener('pointerdown',ev=>{ev.preventDefault();ev.stopPropagation();draggingSeek=true;progress.setPointerCapture&&progress.setPointerCapture(ev.pointerId);seekFromPointer(ev);setVisible();});
-progress.addEventListener('pointermove',ev=>{if(!draggingSeek)return;ev.preventDefault();ev.stopPropagation();seekFromPointer(ev);});
-progress.addEventListener('pointerup',ev=>{if(!draggingSeek)return;ev.preventDefault();ev.stopPropagation();seekFromPointer(ev);draggingSeek=false;});
-progress.addEventListener('pointercancel',()=>{draggingSeek=false});
+function beginSeek(ev){ev.preventDefault();ev.stopPropagation();draggingSeek=true;try{progress.setPointerCapture&&progress.setPointerCapture(ev.pointerId)}catch(_){} seekFromPointer(ev);setVisible();}
+function moveSeek(ev){if(!draggingSeek)return;ev.preventDefault();ev.stopPropagation();seekFromPointer(ev);}
+function endSeek(ev){if(!draggingSeek)return;ev.preventDefault();ev.stopPropagation();seekFromPointer(ev);draggingSeek=false;}
+progress.addEventListener('pointerdown',beginSeek,{passive:false});
+progress.addEventListener('pointermove',moveSeek,{passive:false});
+progress.addEventListener('pointerup',endSeek,{passive:false});
+progress.addEventListener('pointercancel',()=>{draggingSeek=false},{passive:false});
+progress.addEventListener('touchstart',beginSeek,{passive:false});
+progress.addEventListener('touchmove',moveSeek,{passive:false});
+progress.addEventListener('touchend',endSeek,{passive:false});
 full.onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();pip.onclick=()=>document.pictureInPictureElement?document.exitPictureInPicture():v.requestPictureInPicture&&v.requestPictureInPicture();
 if(settingsTop)settingsTop.onclick=()=>settings.click();
 if(ccTop)ccTop.onclick=()=>ccBtn.click();
 if(pipTop)pipTop.onclick=()=>pip.click();
 if(fitTop)fitTop.onclick=()=>full.click();
-if(closeBtn)closeBtn.onclick=()=>{try{v.pause()}catch(_){} if(history.length>1)history.back(); else location.href='/';};
+if(closeBtn)closeBtn.onclick=safeExitPlayer;
 ccBtn.onclick=()=>{ if(!arabicCues.length)return; enableArabicSubtitle(!arabicEnabled); };
 settings.onclick=()=>{menu.classList.toggle('show');renderMainMenu()};
 function renderMainMenu(){menuItems.innerHTML='';addItem('جودة الفيديو','Auto',renderQualityMenu);addItem('سرعة التشغيل',v.playbackRate+'x',renderSpeedMenu);addItem('الترجمة',ccBtn.classList.contains('active')?('العربية '+(subtitleOffset?subtitleOffset.toFixed(1)+'ث':'')):'إيقاف',renderSubtitleMenu)}
