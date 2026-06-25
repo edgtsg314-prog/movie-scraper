@@ -16,70 +16,6 @@ const OS_USERNAME = process.env.OPENSUBTITLES_USERNAME || 'adwameshari';
 const OS_PASSWORD = process.env.OPENSUBTITLES_PASSWORD || 'MESHARI';
 const OS_USER_AGENT = process.env.OPENSUBTITLES_USER_AGENT || 'IPTVExpert v1.0';
 
-
-// ── Local Live TV source manager ─────────────────────────────────────────────
-// Add your channels in data/live-channels.json, then open:
-//   /?live=Bein1
-// Supported source types: hls, mp4, webm, embed, auto.
-const LIVE_CHANNELS_FILE = path.join(__dirname, '..', 'data', 'live-channels.json');
-function normalizeKey(v) {
-  return String(v || '').trim().toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9_\-\u0600-\u06ff]/gi, '');
-}
-function loadLiveChannels() {
-  let list = [];
-  try {
-    const raw = fs.readFileSync(LIVE_CHANNELS_FILE, 'utf8');
-    const parsed = JSON.parse(raw);
-    list = Array.isArray(parsed) ? parsed : (parsed.channels || []);
-  } catch (_) {
-    list = [];
-  }
-
-  // Optional quick env mapping, e.g. LIVE_BEIN1_URL=https://example.com/live.m3u8
-  for (const [k, v] of Object.entries(process.env)) {
-    const m = k.match(/^LIVE_([A-Z0-9_]+)_URL$/i);
-    if (m && v) {
-      list.push({ id: m[1], name: m[1].replace(/_/g, ' '), url: v, type: 'auto' });
-    }
-  }
-
-  const map = new Map();
-  for (const ch of list) {
-    if (!ch || !ch.url) continue;
-    const id = ch.id || ch.key || ch.slug || ch.name;
-    if (!id) continue;
-    map.set(normalizeKey(id), {
-      id: String(id),
-      name: ch.name || String(id),
-      logo: ch.logo || '',
-      group: ch.group || ch.category || 'Live TV',
-      url: ch.url,
-      type: (ch.type || 'auto').toLowerCase()
-    });
-  }
-  return map;
-}
-function getLiveChannel(liveId) {
-  const map = loadLiveChannels();
-  const key = normalizeKey(liveId);
-  if (map.has(key)) return map.get(key);
-  const names = [...map.values()].map(x => x.id);
-  const err = new Error(`Live channel not found: ${liveId}. Available: ${names.join(', ') || 'none'}`);
-  err.statusCode = 404;
-  throw err;
-}
-function detectSourceType(url, preferred) {
-  const p = String(preferred || '').toLowerCase();
-  if (['hls','mp4','webm','dash','embed'].includes(p)) return p;
-  const u = String(url || '').split('?')[0].toLowerCase();
-  if (/\.m3u8?$/.test(u)) return 'hls';
-  if (/\.mp4$/.test(u)) return 'mp4';
-  if (/\.webm$/.test(u)) return 'webm';
-  if (/\.mpd$/.test(u)) return 'dash';
-  if (/\.php$|embed|watch|stream/.test(u)) return 'embed';
-  return 'auto';
-}
-
 let osToken = null;
 let osTokenAt = 0;
 
@@ -474,50 +410,130 @@ async function getArabicSubtitleVtt(tmdbId, season, episode, choice) {
   return { vtt, chosen, total: list.length };
 }
 
+
+
+// ── Live Channels Manager ───────────────────────────────────────────────────
+const LIVE_DB_PATH = path.join(process.cwd(), 'data', 'live-channels.json');
+function ensureLiveDb() {
+  try {
+    const dir = path.dirname(LIVE_DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(LIVE_DB_PATH)) fs.writeFileSync(LIVE_DB_PATH, '[]\n', 'utf8');
+  } catch (_) {}
+}
+function readLiveChannels() {
+  ensureLiveDb();
+  try {
+    const raw = fs.readFileSync(LIVE_DB_PATH, 'utf8');
+    const arr = JSON.parse(raw || '[]');
+    return Array.isArray(arr) ? arr : [];
+  } catch (_) { return []; }
+}
+function writeLiveChannels(list) {
+  ensureLiveDb();
+  fs.writeFileSync(LIVE_DB_PATH, JSON.stringify(list, null, 2), 'utf8');
+}
+function makeLiveId(name = '') {
+  const base = String(name || '').trim().toLowerCase()
+    .replace(/[^a-z0-9\u0600-\u06FF]+/gi, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 28);
+  const rnd = Math.random().toString(36).slice(2, 8);
+  return (base ? `${base}-${rnd}` : `live-${rnd}`).replace(/--+/g, '-');
+}
+function safeChannel(ch) {
+  return {
+    id: String(ch.id || ch.slug || makeLiveId(ch.name)),
+    name: String(ch.name || 'Live Channel'),
+    category: String(ch.category || 'عام'),
+    logo: String(ch.logo || ''),
+    stream: String(ch.stream || ch.url || ''),
+    backup: Array.isArray(ch.backup) ? ch.backup.map(String).filter(Boolean) : [],
+    active: ch.active !== false,
+    createdAt: ch.createdAt || new Date().toISOString(),
+    views: Number(ch.views || 0)
+  };
+}
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = '';
+    req.on('data', chunk => { body += chunk; if (body.length > 2_000_000) req.destroy(); });
+    req.on('end', () => resolve(body));
+    req.on('error', reject);
+  });
+}
+async function liveAdminApi(req, res, q) {
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  if (req.method === 'GET') {
+    const list = readLiveChannels().map(ch => {
+      const c = safeChannel(ch);
+      return { ...c, watchUrl: `/?live=${encodeURIComponent(c.id)}` };
+    });
+    return res.end(JSON.stringify({ ok: true, count: list.length, channels: list }, null, 2));
+  }
+  if (req.method !== 'POST') {
+    res.statusCode = 405;
+    return res.end(JSON.stringify({ ok: false, error: 'method not allowed' }));
+  }
+  try {
+    const raw = await readBody(req);
+    const body = raw ? JSON.parse(raw) : {};
+    const action = body.action || q.action || 'save';
+    let list = readLiveChannels().map(safeChannel);
+    if (action === 'delete') {
+      const id = String(body.id || '').trim();
+      list = list.filter(x => x.id !== id);
+      writeLiveChannels(list);
+      return res.end(JSON.stringify({ ok: true, deleted: id, channels: list.length }));
+    }
+    const item = safeChannel(body.channel || body);
+    if (!item.stream) {
+      res.statusCode = 400;
+      return res.end(JSON.stringify({ ok: false, error: 'stream url required' }));
+    }
+    if (!item.id || list.some(x => x.id === item.id) === false && (body.autoId || !body.id)) item.id = makeLiveId(item.name);
+    const i = list.findIndex(x => x.id === item.id);
+    if (i >= 0) list[i] = { ...list[i], ...item, updatedAt: new Date().toISOString() };
+    else list.unshift(item);
+    writeLiveChannels(list);
+    return res.end(JSON.stringify({ ok: true, channel: { ...item, watchUrl: `/?live=${encodeURIComponent(item.id)}` } }, null, 2));
+  } catch (err) {
+    res.statusCode = 500;
+    return res.end(JSON.stringify({ ok: false, error: err.message }));
+  }
+}
+
 // ── Vercel serverless handler ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.end('ok');
 
   const { searchParams } = new URL(req.url, 'http://localhost');
   const q = Object.fromEntries(searchParams);
 
-  // Live channel lookup: /api?live=Bein1
-  if (q.live || q.channel) {
-    try {
-      const ch = getLiveChannel(q.live || q.channel);
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.setHeader('Cache-Control', 'no-store');
-      return res.end(JSON.stringify({
-        ok: true,
-        live: true,
-        id: ch.id,
-        title: ch.name,
-        name: ch.name,
-        logo: ch.logo,
-        group: ch.group,
-        url: ch.url,
-        type: detectSourceType(ch.url, ch.type)
-      }, null, 2));
-    } catch (err) {
-      res.statusCode = err.statusCode || 500;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      return res.end(JSON.stringify({ ok: false, error: err.message }));
-    }
+  // Live channels admin/list API
+  if (q.live_list || q.live_admin) {
+    return liveAdminApi(req, res, q);
   }
 
-  // List live channels: /api?live_list=1
-  if (q.live_list) {
-    const channels = [...loadLiveChannels().values()].map(ch => ({
-      id: ch.id, name: ch.name, logo: ch.logo, group: ch.group, type: detectSourceType(ch.url, ch.type)
-    }));
-    res.statusCode = 200;
+  // Live channel lookup: /api?live=bein1
+  if (q.live) {
+    const liveId = String(q.live || '').trim();
+    const channels = readLiveChannels().map(safeChannel);
+    const channel = channels.find(ch => ch.id === liveId || ch.name.toLowerCase() === liveId.toLowerCase());
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    return res.end(JSON.stringify({ ok: true, count: channels.length, channels }, null, 2));
+    if (!channel || !channel.active) {
+      res.statusCode = 404;
+      return res.end(JSON.stringify({ ok: false, error: 'live channel not found' }));
+    }
+    try {
+      channel.views = Number(channel.views || 0) + 1;
+      const updated = channels.map(ch => ch.id === channel.id ? channel : ch);
+      writeLiveChannels(updated);
+    } catch (_) {}
+    return res.end(JSON.stringify({ ok: true, channel: { id: channel.id, name: channel.name, category: channel.category, logo: channel.logo, url: channel.stream, backup: channel.backup } }, null, 2));
   }
 
   // Debug identifier resolution: /api?subtitle_debug=1&id=238

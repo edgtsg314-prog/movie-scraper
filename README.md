@@ -1,81 +1,29 @@
-# Movie Scraper - Custom Player + Smart Arabic Subtitles
+# IPTV Expert Player + Live Links
 
-## التشغيل المحلي
+تشغيل:
+
 ```bash
 npm install
 npm start
 ```
 
-افتح:
+المشغل:
+
 ```text
-http://localhost:8090/?id=238
+http://localhost:8090/?id=550
+http://localhost:8090/?id=1396&s=1&e=1
 ```
 
-## اختبار الترجمات
-قائمة الترجمات العربية المتاحة:
+إدارة روابط البث المباشر:
+
 ```text
-/api?subtitle_list=1&id=238
+http://localhost:8090/live-admin.html
 ```
 
-تحميل أفضل ترجمة عربية بصيغة VTT:
+أضف القناة ورابطها الحقيقي، وسيولد النظام رابطًا مختصرًا مثل:
+
 ```text
-/api?subtitle=1&id=238
+http://localhost:8090/?live=beIN-sports-abc123
 ```
 
-اختيار ترجمة ثانية/ثالثة:
-```text
-/api?subtitle=1&id=238&choice=1
-```
-
-## الجديد
-- يحول TMDB ID إلى IMDb ID تلقائيًا قبل البحث في OpenSubtitles.
-- يجلب كل الترجمات العربية ويرتبها بنظام نقاط.
-- يختار الأفضل تلقائيًا بدل أول نتيجة عشوائية.
-- يدعم اختيار أكثر من ترجمة عربية من قائمة الإعدادات.
-- يدعم تقديم/تأخير الترجمة من المشغل بدون تعديل الملف.
-- يعرض الترجمة العربية Overlay فوق الفيديو لضمان ظهورها في كل المتصفحات.
-- لا يكتب ملفات داخل Vercel، لذلك لا تظهر مشكلة ENOENT.
-
-
-## التعديلات الجديدة
-- إخفاء أزرار المشغل عند الضغط على الشاشة، وتظهر فور أول حركة ماوس أو لمس.
-- إصلاح زر ملء الشاشة للجوال، مع دعم iOS عبر `webkitEnterFullscreen`.
-- دعم رابط الحلقات بالشكل:
-  `/id=1396&s=1&e=1`
-  أو الشكل القديم:
-  `/?id=1396&s=1&e=1`
-- إضافة زر الحلقة السابقة والحلقة التالية للمسلسلات.
-
-
-## Live TV support
-You can now open live channels using a clean internal ID:
-
-```txt
-http://localhost:8090/?live=Bein1
-```
-
-Edit channel sources here:
-
-```txt
-data/live-channels.json
-```
-
-Example:
-
-```json
-{
-  "id": "Bein1",
-  "name": "beIN Sports 1",
-  "logo": "https://example.com/logo.png",
-  "url": "https://your-legal-source.com/live/bein1.m3u8",
-  "type": "hls"
-}
-```
-
-Supported types: `hls`, `mp4`, `webm`, `embed`, `auto`.
-
-You can also list channels:
-
-```txt
-/api?live_list=1
-```
+المستخدم لا يرى الرابط الحقيقي، ويستطيع المشغل فتح M3U8/MP4 أو Embed حسب نوع الرابط.
