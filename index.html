@@ -3,59 +3,125 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Zenith Movies & TV</title>
+    <title>مشغل السينما الاحترافي</title>
+    
+    <!-- استدعاء مكتبة المشغل العصري Plyr ومكتبة تشغيل البث المباشر Hls.js -->
+    <link rel="stylesheet" href="https://plyr.io" />
+    <script src="https://plyr.io"></script>
+    <script src="https://jsdelivr.net"></script>
+    
     <style>
-        body { background-color: #0c0c0c; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
-        .player-container { max-width: 1000px; margin: 30px auto; position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); }
-        .player-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
-        #loading { color: #63b8bc; font-size: 18px; margin-top: 50px; }
+        body { 
+            background-color: #0c0c0c; 
+            color: #fff; 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 20px; 
+            text-align: center; 
+        }
+        .wrapper {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+        .player-container { 
+            position: relative; 
+            background: #000; 
+            border-radius: 12px; 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8); 
+            margin-top: 20px;
+            overflow: hidden;
+        }
+        #loading { 
+            color: #63b8bc; 
+            font-size: 18px; 
+            margin-top: 50px; 
+            font-weight: bold;
+        }
+        /* تخصيص المشغل ليطابق المظهر واللون الأزرق الذي اخترته من لقطة الشاشة */
+        :root {
+            --plyr-color-main: #63b8bc; /* اللون الأزرق الأساسي للأزرار وشريط التقدم */
+            --plyr-video-background: #000000;
+        }
     </style>
 </head>
 <body>
 
-    <div id="loading">جاري تهيئة مشغل الفيديو الاحترافي...</div>
-    
-    <div class="player-container" id="player-box" style="display: none;">
-        <!-- هذا الـ Iframe سيقفل الإعلانات ويعرض واجهة المشغل العصري الملونة -->
-        <iframe id="vidlink-secure-player" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
+    <div class="wrapper">
+        <div id="loading">جاري معالجة وفك تشفير البث الآمن...</div>
+        
+        <div class="player-container" id="player-box" style="display: none;">
+            <!-- مشغل فيديو HTML5 أصلي ونظيف 100% بدون أي Iframe خارجي وبدون إعلانات -->
+            <video id="player" controls crossorigin playsinline></video>
+        </div>
     </div>
 
     <script>
-        // قراءة المعرفات تلقائياً من رابط موقعك الحالي (?id=550)
+        // قراءة المتغيرات من الرابط تلقائياً: الأفلام (?id=550) أو المسلسلات (?id=456&s=1&e=1)
         const urlParams = new URLSearchParams(window.location.search);
         const movieId = urlParams.get('id');
         const season = urlParams.get('s') || "";
         const episode = urlParams.get('e') || "";
 
         if (!movieId) {
-            document.getElementById('loading').innerText = "خطأ: لم يتم تحديد معرف الفيلم أو المسلسل.";
+            document.getElementById('loading').innerText = "تنبيه: يرجى تحديد معرف العمل في الرابط (مثال: ?id=550)";
         } else {
-            // استدعاء دالة بناء المشغل النظيف
-            initializePremiumPlayer();
+            startSecureStreaming();
         }
 
-        function initializePremiumPlayer() {
-            // توجيه الطلب إلى كود الـ API السحابي الخاص بك على Vercel ليفلتر الإعلانات
-            let apiEndpoint = `/api/stream?id=${movieId}`;
+        async function startSecureStreaming() {
+            // بناء مسار الطلب المتوافق تماماً مع كود الـ Backend المعقد الخاص بك
+            let apiEndpoint = `/api?id=${movieId}`;
             if (season && episode) {
                 apiEndpoint += `&s=${season}&e=${episode}`;
             }
 
-            // نقوم بحقن الرابط الآمن بداخل المشغل وتفعيل خيارات الألوان المخصصة من لقطة الشاشة
-            const secureIframe = document.getElementById('vidlink-secure-player');
-            
-            // تخصيص الألوان والميزات البرمجية: تفعيل الأزرار التلقائية، ولون أزرق مخصص (63b8bc)
-            let finalPlayerUrl = season 
-                ? `https://vidlink.pro{movieId}/${season}/${episode}`
-                : `https://vidlink.pro{movieId}`;
-            
-            // إضافة بارامترات التخصيص من توثيق الموقع الأصلي
-            finalPlayerUrl += `?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true`;
+            try {
+                // الاتصال بالكود الخاص بك لجلب الرابط بعد فك تشفيره بملف الـ WASM
+                const response = await fetch(apiEndpoint);
+                const data = await response.json();
+                
+                // الرابط الناتج من نظامك التشفيري والقادم على شكل JSON باسم url
+                if (data.url) {
+                    const videoElement = document.getElementById('player');
+                    
+                    // استخدام نظام الـ Proxy المدمج في كودك عبر إعادة بناء رابط البث
+                    const secureStreamUrl = `/api?url=${encodeURIComponent(data.url)}`;
 
-            // عرض المشغل وإخفاء كلمة التحميل
-            secureIframe.src = finalPlayerUrl;
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('player-box').style.display = 'block';
+                    // تفعيل مكتبة HLS لتشغيل الفيديو النظيف داخل المتصفح بسلاسة
+                    if (Hls.isSupported()) {
+                        const hls = new Hls();
+                        hls.loadSource(secureStreamUrl);
+                        hls.attachMedia(videoElement);
+                    } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
+                        videoElement.src = secureStreamUrl;
+                    }
+
+                    // تشغيل وتفعيل واجهة التحكم الاحترافية والملونة وتعريبها للزوار بالكامل
+                    const player = new Plyr(videoElement, {
+                        captions: { active: true, update: true, language: 'ar' },
+                        i18n: {
+                            captions: 'الترجمة العربية',
+                            disabled: 'إيقاف الترجمة',
+                            enabled: 'تفعيل الترجمة',
+                            play: 'تشغيل المسلسل',
+                            pause: 'إيقاف مؤقت',
+                            settings: 'الإعدادات',
+                            quality: 'الجودة',
+                            speed: 'السرعة'
+                        }
+                    });
+
+                    // إخفاء كلمة التحميل وإظهار السينما النظيفة الخاصة بك
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('player-box').style.display = 'block';
+
+                } else {
+                    document.getElementById('loading').innerText = "عذراً، لم نتمكن من جلب الملف النظيف لهذا العمل.";
+                }
+            } catch (error) {
+                document.getElementById('loading').innerText = "حدث خطأ أثناء فك تشفير السيرفر السحابي.";
+                console.error(error);
+            }
         }
     </script>
 </body>
