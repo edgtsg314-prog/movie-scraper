@@ -1,0 +1,21 @@
+{
+  "channels": [
+    {
+      "id": "Bein1",
+      "name": "beIN Sports 1",
+      "group": "رياضة",
+      "logo": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQX2U-OmZOSNn4UWVxAQlLRSijBFmvdq7L0IAHf6q1mtw&s=10",
+      "url": "https://example.com/live/bein1.m3u8",
+      "type": "hls",
+      "note": "Replace url with your legal m3u8/mp4/embed source"
+    },
+    {
+      "id": "DemoLive",
+      "name": "Demo Live Channel",
+      "group": "تجربة",
+      "logo": "",
+      "url": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8",
+      "type": "hls"
+    }
+  ]
+}

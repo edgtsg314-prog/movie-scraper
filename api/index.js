@@ -16,6 +16,70 @@ const OS_USERNAME = process.env.OPENSUBTITLES_USERNAME || 'adwameshari';
 const OS_PASSWORD = process.env.OPENSUBTITLES_PASSWORD || 'MESHARI';
 const OS_USER_AGENT = process.env.OPENSUBTITLES_USER_AGENT || 'IPTVExpert v1.0';
 
+
+// ── Local Live TV source manager ─────────────────────────────────────────────
+// Add your channels in data/live-channels.json, then open:
+//   /?live=Bein1
+// Supported source types: hls, mp4, webm, embed, auto.
+const LIVE_CHANNELS_FILE = path.join(__dirname, '..', 'data', 'live-channels.json');
+function normalizeKey(v) {
+  return String(v || '').trim().toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9_\-\u0600-\u06ff]/gi, '');
+}
+function loadLiveChannels() {
+  let list = [];
+  try {
+    const raw = fs.readFileSync(LIVE_CHANNELS_FILE, 'utf8');
+    const parsed = JSON.parse(raw);
+    list = Array.isArray(parsed) ? parsed : (parsed.channels || []);
+  } catch (_) {
+    list = [];
+  }
+
+  // Optional quick env mapping, e.g. LIVE_BEIN1_URL=https://example.com/live.m3u8
+  for (const [k, v] of Object.entries(process.env)) {
+    const m = k.match(/^LIVE_([A-Z0-9_]+)_URL$/i);
+    if (m && v) {
+      list.push({ id: m[1], name: m[1].replace(/_/g, ' '), url: v, type: 'auto' });
+    }
+  }
+
+  const map = new Map();
+  for (const ch of list) {
+    if (!ch || !ch.url) continue;
+    const id = ch.id || ch.key || ch.slug || ch.name;
+    if (!id) continue;
+    map.set(normalizeKey(id), {
+      id: String(id),
+      name: ch.name || String(id),
+      logo: ch.logo || '',
+      group: ch.group || ch.category || 'Live TV',
+      url: ch.url,
+      type: (ch.type || 'auto').toLowerCase()
+    });
+  }
+  return map;
+}
+function getLiveChannel(liveId) {
+  const map = loadLiveChannels();
+  const key = normalizeKey(liveId);
+  if (map.has(key)) return map.get(key);
+  const names = [...map.values()].map(x => x.id);
+  const err = new Error(`Live channel not found: ${liveId}. Available: ${names.join(', ') || 'none'}`);
+  err.statusCode = 404;
+  throw err;
+}
+function detectSourceType(url, preferred) {
+  const p = String(preferred || '').toLowerCase();
+  if (['hls','mp4','webm','dash','embed'].includes(p)) return p;
+  const u = String(url || '').split('?')[0].toLowerCase();
+  if (/\.m3u8?$/.test(u)) return 'hls';
+  if (/\.mp4$/.test(u)) return 'mp4';
+  if (/\.webm$/.test(u)) return 'webm';
+  if (/\.mpd$/.test(u)) return 'dash';
+  if (/\.php$|embed|watch|stream/.test(u)) return 'embed';
+  return 'auto';
+}
+
 let osToken = null;
 let osTokenAt = 0;
 
@@ -419,6 +483,42 @@ module.exports = async function handler(req, res) {
 
   const { searchParams } = new URL(req.url, 'http://localhost');
   const q = Object.fromEntries(searchParams);
+
+  // Live channel lookup: /api?live=Bein1
+  if (q.live || q.channel) {
+    try {
+      const ch = getLiveChannel(q.live || q.channel);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.end(JSON.stringify({
+        ok: true,
+        live: true,
+        id: ch.id,
+        title: ch.name,
+        name: ch.name,
+        logo: ch.logo,
+        group: ch.group,
+        url: ch.url,
+        type: detectSourceType(ch.url, ch.type)
+      }, null, 2));
+    } catch (err) {
+      res.statusCode = err.statusCode || 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+  }
+
+  // List live channels: /api?live_list=1
+  if (q.live_list) {
+    const channels = [...loadLiveChannels().values()].map(ch => ({
+      id: ch.id, name: ch.name, logo: ch.logo, group: ch.group, type: detectSourceType(ch.url, ch.type)
+    }));
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    return res.end(JSON.stringify({ ok: true, count: channels.length, channels }, null, 2));
+  }
 
   // Debug identifier resolution: /api?subtitle_debug=1&id=238
   if (q.subtitle_debug) {
