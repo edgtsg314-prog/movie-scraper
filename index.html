@@ -191,25 +191,49 @@ function notifyParentClose(){
   }catch(_){ }
   return false;
 }
-function safeExitPlayer(){
-  try{v.pause(); v.removeAttribute('src'); v.load();}catch(_){ }
-  if(notifyParentClose()) return;
-  const ret=p.get('return')||p.get('back')||p.get('returnUrl');
-  if(ret){ try{ location.replace(new URL(ret, location.href).toString()); return; }catch(_){ } }
+let isClosingPlayer=false;
+function cleanPlayerSoft(){
+  // إيقاف فقط بدون تفريغ src قبل الرجوع؛ تفريغ src هو سبب الشاشة السوداء في بعض المتصفحات.
+  try{ v.pause(); }catch(_){ }
+  try{ if(hls){ hls.stopLoad(); } }catch(_){ }
+}
+function fallbackExitPlayer(){
+  const ret=p.get('return')||p.get('back')||p.get('returnUrl')||p.get('from');
+  if(ret){
+    try{ location.replace(new URL(ret, location.href).toString()); return; }catch(_){ }
+  }
   if(document.referrer){
     try{
       const r=new URL(document.referrer);
       const here=new URL(location.href);
-      if(r.href!==here.href && !r.searchParams.has('id')){ location.replace(r.href); return; }
+      if(r.origin===here.origin && r.href!==here.href && !r.searchParams.has('id')){
+        location.replace(r.href);
+        return;
+      }
     }catch(_){ }
   }
-  if(history.length>1){ history.back(); setTimeout(()=>{ if(location.search.includes('id=')) location.replace('/admin'); }, 650); return; }
-  location.replace('/admin');
+  if(history.length>1){
+    history.back();
+    return;
+  }
+  location.replace('/');
+}
+function safeExitPlayer(){
+  if(isClosingPlayer) return;
+  isClosingPlayer=true;
+  cleanPlayerSoft();
+  // إذا كان المشغل داخل موقعك كـ iframe، خل الصفحة الأم تقفل النافذة.
+  if(notifyParentClose()){
+    // احتياط إذا الصفحة الأم ما التقطت الرسالة.
+    setTimeout(()=>{ if(!document.hidden) fallbackExitPlayer(); }, 450);
+    return;
+  }
+  fallbackExitPlayer();
 }
 async function start(){if(!id){
-  // لا نترك الشاشة سوداء إذا فُتح المشغل بدون ID بعد الرجوع/الإغلاق.
+  // إذا فُتح المشغل بدون ID لا نترك صفحة سوداء؛ نرجع للمصدر فقط.
   if(notifyParentClose()) return;
-  document.body.innerHTML='<div style="height:100svh;display:grid;place-items:center;background:#000;color:#fff;font-family:system-ui;text-align:center"><div><h2>تم إغلاق المشغل</h2><button onclick="location.replace('/admin')" style="margin-top:16px;background:#e50914;color:#fff;border:0;border-radius:14px;padding:12px 22px;font-weight:800">العودة</button></div></div>';
+  fallbackExitPlayer();
   return;
 }await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playStream(d.url)}catch(err){showErr(err.message)}}
 function playStream(raw){const src='/api?url='+encodeURIComponent(raw);if(Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:false});hls.loadSource(src);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];loader.style.display='none';restoreProgress();v.play().catch(()=>{});renderQualityMenu()});hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal)showErr(data.details||'HLS error')})}else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true})}else showErr('المتصفح لا يدعم HLS')}
@@ -272,7 +296,7 @@ function renderSubtitleMenu(){
   addItem('تقديم الترجمة 0.5ث','',()=>{subtitleOffset+=0.5;localStorage.setItem(storageKey+'-sub-offset',String(subtitleOffset));renderSubtitleMenu();},false);
   addItem('إعادة ضبط التزامن',subtitleOffset.toFixed(1)+'ث',()=>{subtitleOffset=0;localStorage.setItem(storageKey+'-sub-offset','0');renderSubtitleMenu();},subtitleOffset===0);
 }
-addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();toggle()}if(e.code==='ArrowLeft')v.currentTime-=10;if(e.code==='ArrowRight')v.currentTime+=10;if(e.code==='KeyF')full.click();if(e.code==='KeyM')mute.click()});
+addEventListener('keydown',e=>{if(e.code==='Escape'){e.preventDefault();safeExitPlayer();return;}if(e.code==='Space'){e.preventDefault();toggle()}if(e.code==='ArrowLeft')v.currentTime-=10;if(e.code==='ArrowRight')v.currentTime+=10;if(e.code==='KeyF')full.click();if(e.code==='KeyM')mute.click()});
 start();
 </script>
 </body>
