@@ -116,19 +116,49 @@ async function tmdbJson(endpoint) {
   return r.json();
 }
 
-async function getImdbId(tmdbId, season, episode) {
+async function getMediaIdentifiers(tmdbId, season, episode) {
+  // Returns accurate IDs + metadata so OpenSubtitles can match by IMDb first,
+  // then TMDB/title/year as fallback. This fixes using TMDB ID directly as IMDb.
   if (season) {
-    // best match: external id for the exact episode
-    try {
-      const ep = await tmdbJson(`/tv/${tmdbId}/season/${season}/episode/${episode || 1}/external_ids`);
-      if (ep?.imdb_id) return { imdbId: ep.imdb_id, mediaKind: 'episode' };
-    } catch (_) {}
-    // fallback: show imdb id + season/episode search
-    const show = await tmdbJson(`/tv/${tmdbId}/external_ids`);
-    return { imdbId: show?.imdb_id || null, mediaKind: 'tv' };
+    let showExternal = {}, showDetails = {}, epExternal = {}, epDetails = {};
+    try { showExternal = await tmdbJson(`/tv/${tmdbId}/external_ids`); } catch (_) {}
+    try { showDetails = await tmdbJson(`/tv/${tmdbId}?language=en-US`); } catch (_) {}
+    try { epExternal = await tmdbJson(`/tv/${tmdbId}/season/${season}/episode/${episode || 1}/external_ids`); } catch (_) {}
+    try { epDetails = await tmdbJson(`/tv/${tmdbId}/season/${season}/episode/${episode || 1}?language=en-US`); } catch (_) {}
+    return {
+      tmdbId: String(tmdbId),
+      type: 'episode',
+      mediaKind: 'episode',
+      imdbId: epExternal?.imdb_id || showExternal?.imdb_id || null,
+      episodeImdbId: epExternal?.imdb_id || null,
+      showImdbId: showExternal?.imdb_id || null,
+      season: Number(season),
+      episode: Number(episode || 1),
+      title: showDetails?.name || showDetails?.original_name || '',
+      episodeTitle: epDetails?.name || '',
+      year: String(showDetails?.first_air_date || '').slice(0, 4)
+    };
   }
-  const movie = await tmdbJson(`/movie/${tmdbId}/external_ids`);
-  return { imdbId: movie?.imdb_id || null, mediaKind: 'movie' };
+
+  let movieExternal = {}, movieDetails = {};
+  try { movieExternal = await tmdbJson(`/movie/${tmdbId}/external_ids`); } catch (_) {}
+  try { movieDetails = await tmdbJson(`/movie/${tmdbId}?language=en-US`); } catch (_) {}
+  return {
+    tmdbId: String(tmdbId),
+    type: 'movie',
+    mediaKind: 'movie',
+    imdbId: movieExternal?.imdb_id || null,
+    title: movieDetails?.title || movieDetails?.original_title || '',
+    year: String(movieDetails?.release_date || '').slice(0, 4)
+  };
+}
+
+function imdbVariants(imdbId) {
+  const raw = String(imdbId || '').trim();
+  if (!raw) return [];
+  const noTt = raw.replace(/^tt/i, '');
+  const noZeros = noTt.replace(/^0+/, '') || noTt;
+  return [...new Set([noZeros, noTt, raw])].filter(Boolean);
 }
 
 async function osLogin() {
@@ -153,16 +183,12 @@ async function osLogin() {
   return osToken;
 }
 
-function cleanImdb(imdbId) {
-  return String(imdbId || '').replace(/^tt/i, '');
-}
-
-async function osSearchArabic({ imdbId, season, episode }) {
+async function osSearchArabicOnce(params) {
   const token = await osLogin();
   const qs = new URLSearchParams({ languages: 'ar', order_by: 'download_count', order_direction: 'desc' });
-  if (imdbId) qs.set('imdb_id', cleanImdb(imdbId));
-  if (season) qs.set('season_number', String(season));
-  if (episode) qs.set('episode_number', String(episode));
+  for (const [k, v] of Object.entries(params || {})) {
+    if (v !== undefined && v !== null && String(v).trim() !== '') qs.set(k, String(v));
+  }
   const url = `https://api.opensubtitles.com/api/v1/subtitles?${qs.toString()}`;
   const r = await fetch(url, {
     headers: {
@@ -173,9 +199,49 @@ async function osSearchArabic({ imdbId, season, episode }) {
     }
   });
   const text = await r.text();
-  if (!r.ok) throw new Error(`OpenSubtitles search ${r.status}: ${text.slice(0, 160)}`);
+  if (!r.ok) throw new Error(`OpenSubtitles search ${r.status}: ${text.slice(0, 220)}`);
   const data = JSON.parse(text);
   return data?.data || [];
+}
+
+async function osSearchArabicSmart(info) {
+  const attempts = [];
+  const isEpisode = info.type === 'episode';
+  const type = isEpisode ? 'episode' : 'movie';
+
+  // 1) Best: IMDb ID. OpenSubtitles generally expects IMDb without "tt" and without leading zeroes.
+  for (const imdb of imdbVariants(info.episodeImdbId || info.imdbId)) {
+    attempts.push({ type, imdb_id: imdb, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined });
+  }
+
+  // 2) If exact episode IMDb did not work, try show IMDb + S/E.
+  if (isEpisode && info.showImdbId && info.showImdbId !== info.episodeImdbId) {
+    for (const imdb of imdbVariants(info.showImdbId)) {
+      attempts.push({ type: 'episode', imdb_id: imdb, season_number: info.season, episode_number: info.episode });
+    }
+  }
+
+  // 3) TMDB fallback. This is less accurate, but useful when OpenSubtitles indexed TMDB directly.
+  attempts.push({ type, tmdb_id: info.tmdbId, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined });
+
+  // 4) Title/year fallback. This catches older movies where ID lookup misses but Arabic exists.
+  if (info.title) {
+    attempts.push({ type, query: info.title, year: info.year, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined });
+    if (isEpisode && info.episodeTitle) attempts.push({ type, query: `${info.title} ${info.episodeTitle}`, year: info.year, season_number: info.season, episode_number: info.episode });
+  }
+
+  let lastError = null;
+  for (const params of attempts) {
+    try {
+      const results = await osSearchArabicOnce(params);
+      const best = pickBestArabic(results);
+      if (best) return { best, used: params, count: results.length };
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  if (lastError) console.warn('OpenSubtitles last search error:', lastError.message);
+  return { best: null, used: null, count: 0 };
 }
 
 function pickBestArabic(results) {
@@ -216,15 +282,15 @@ async function osDownloadVtt(fileId) {
 }
 
 async function getArabicSubtitleVtt(tmdbId, season, episode) {
-  const { imdbId } = await getImdbId(tmdbId, season, episode);
-  if (!imdbId) throw new Error('IMDb ID not found from TMDB');
-  let results = await osSearchArabic({ imdbId, season, episode });
-  let best = pickBestArabic(results);
-  // If exact episode ID was used and no result, fallback to show imdb id + S/E already covered by getImdb fallback only when ep id missing.
-  if (!best) throw new Error('No Arabic subtitle found');
+  const info = await getMediaIdentifiers(tmdbId, season, episode);
+  const { best, used } = await osSearchArabicSmart(info);
+  if (!best) {
+    throw new Error(`No Arabic subtitle found (tmdb=${tmdbId}${season ? ` s${season}e${episode || 1}` : ''}, imdb=${info.imdbId || 'none'})`);
+  }
   const file = best.attributes?.files?.[0];
   if (!file?.file_id) throw new Error('Arabic subtitle has no downloadable file_id');
-  return osDownloadVtt(file.file_id);
+  const vtt = await osDownloadVtt(file.file_id);
+  return vtt;
 }
 
 // ── Vercel serverless handler ─────────────────────────────────────────────────
@@ -236,6 +302,20 @@ module.exports = async function handler(req, res) {
 
   const { searchParams } = new URL(req.url, 'http://localhost');
   const q = Object.fromEntries(searchParams);
+
+  // Debug identifier resolution: /api?subtitle_debug=1&id=238
+  if (q.subtitle_debug) {
+    try {
+      const info = await getMediaIdentifiers(q.id, q.s, q.e || '1');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: true, info }, null, 2));
+    } catch (err) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+  }
 
   // Arabic subtitle VTT: /api?subtitle=1&id=238 OR /api?subtitle=1&id=94997&s=1&e=1
   if (q.subtitle) {
