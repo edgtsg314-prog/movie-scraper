@@ -4,7 +4,6 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Stream</title>
-<script src="https://jsdelivr.net"></script>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; background: #000; font-family: system-ui, sans-serif; color: #fff; overflow: hidden; }
@@ -22,14 +21,14 @@ html, body { width: 100%; height: 100%; background: #000; font-family: system-ui
   position: relative; z-index: 1;
   width: 72px; height: 72px;
   border: 5px solid rgba(255,255,255,.15);
-  border-top-color: #63b8bc; border-radius: 50%; /* تلوين حلقة التحميل باللون الأزرق الخاص بك */
+  border-top-color: #63b8bc; border-radius: 50%; /* تلوين حلقة التحميل بالأزرق */
   animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 #loader-text { position: relative; z-index: 1; font-size: .95rem; color: rgba(255,255,255,.6); letter-spacing: .04em; text-shadow: 0 1px 4px #000; }
 
 #player { position: fixed; inset: 0; display: none; background: #000; }
-video { width: 100%; height: 100%; display: block; }
+iframe { width: 100%; height: 100%; display: block; border: 0; }
 
 #usage {
   position: fixed; inset: 0; display: none; flex-direction: column;
@@ -37,33 +36,6 @@ video { width: 100%; height: 100%; display: block; }
   background: #000; gap: 10px;
 }
 #usage p { font-size: 1.05rem; color: rgba(255,255,255,.65); line-height: 2; }
-
-#err {
-  position: fixed; inset: 0; display: none; flex-direction: column;
-  align-items: center; justify-content: center; text-align: center; background: #000;
-}
-#err-title { font-size: 2.4rem; font-weight: 700; color: #fff; margin-bottom: 18px; }
-#err-link { font-size: 1.1rem; color: #60a5fa; text-decoration: underline; cursor: pointer; }
-#err-link:hover { color: #93c5fd; }
-#err-detail {
-  position: absolute; bottom: 28px; left: 50%; transform: translateX(-50%);
-  font-size: .78rem; color: rgba(255,255,255,.35); white-space: nowrap;
-  max-width: 90vw; overflow: hidden; text-overflow: ellipsis;
-}
-
-/* ── تعديل ألوان مشغل الفيديو الافتراضي لتطابق اللون الأزرق المخصص ── */
-video::-webkit-media-controls-panel {
-  background-image: linear-gradient(transparent, rgba(0,0,0,0.8)) !important;
-}
-video::-webkit-media-controls-play-button,
-video::-webkit-media-controls-current-time-display,
-video::-webkit-media-controls-time-remaining-display,
-video::-webkit-media-controls-timeline,
-video::-webkit-media-controls-volume-slider,
-video::-webkit-media-controls-mute-button,
-video::-webkit-media-controls-fullscreen-button {
-  filter: sepia(100%) saturate(300%) hue-rotate(130deg) brightness(100%) contrast(100%) !important;
-}
 </style>
 </head>
 <body>
@@ -82,25 +54,16 @@ video::-webkit-media-controls-fullscreen-button {
   </p>
 </div>
 
-<div id="err">
-  <div id="err-title">Error Occurred</div>
-  <a id="err-link" href="#">Try vidsrc.xyz instead?</a>
-  <div id="err-detail"></div>
-</div>
-
 <div id="player">
-  <video id="v" controls autoplay playsinline></video>
+  <!-- استخدام إطار مخصص ومحمي لمنع حظر خوادم Vercel -->
+  <iframe id="v" allowfullscreen allow="autoplay; encrypted-media"></iframe>
 </div>
 
 <script>
 var TMDB_KEY = '3a73619bbb8fc6d47742d1b5b2b707b5';
 
 var MESSAGES = [
-  'Loading stream...', 'Contacting the mothership...', 'Bribing the servers...',
-  'Untangling the cables...', 'Asking nicely...', 'Decoding the matrix...',
-  'Warming up the hamsters...', 'Negotiating with the cloud...', 'Almost there...',
-  'Convincing pixels to move...', 'Poking the API...', 'Summoning bandwidth...',
-  'Greasing the pipes...', 'Waking up the interns...', 'Stealing the stream (legally)...'
+  'Loading stream...', 'Contacting the mothership...', 'Almost there...', 'Summoning bandwidth...'
 ];
 var msgEl = document.getElementById('loader-text');
 var msgIdx = 0;
@@ -116,17 +79,6 @@ function showPlayer() {
   clearInterval(msgTimer);
   document.getElementById('loader').style.display = 'none';
   document.getElementById('player').style.display = 'block';
-}
-
-function showErr(msg) {
-  clearInterval(msgTimer);
-  document.getElementById('loader').style.display = 'none';
-  document.getElementById('err').style.display = 'flex';
-  document.getElementById('err-detail').textContent = msg || '';
-  var vidsrcUrl = s
-    ? 'https://vidsrc.xyz' + id + '&season=' + s + '&episode=' + (e || '1')
-    : 'https://vidsrc.xyz' + id;
-  document.getElementById('err-link').href = vidsrcUrl;
 }
 
 function loadBackdrop(id, isTv) {
@@ -151,35 +103,22 @@ if (!id) {
   document.getElementById('usage').style.display = 'flex';
 } else {
   loadBackdrop(id, !!s);
-  var api = '/api?' + (s ? 'id='+id+'&s='+s+'&e='+(e||'1') : 'id='+id);
-  fetch(api)
-    .then(function(r) { return r.json(); })
-    .then(function(d) {
-      if (d.error) return showErr(d.error);
-      play(d.url);
-    })
-    .catch(function(err) { showErr(err.message); });
-}
+  
+  // بناء مسار المشغل المباشر المستقر وتجاوز حظر الـ Backend تماماً
+  let targetUrl = s 
+      ? `https://vidlink.pro{id}/${s}/${e || '1'}`
+      : `https://vidlink.pro{id}`;
 
-function play(rawUrl) {
-  var src = '/api?url=' + encodeURIComponent(rawUrl);
-  var v = document.getElementById('v');
-  if (Hls.isSupported()) {
-    var hls = new Hls({ enableWorker: true });
-    hls.loadSource(src);
-    hls.attachMedia(v);
-    hls.on(Hls.Events.MANIFEST_PARSED, function() {
+  // حقن اللون الأزرق الاحترافي وزر الحلقة التالية والترجمة تلقائياً من المصدر
+  targetUrl += `?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true`;
+
+  const iframe = document.getElementById('v');
+  iframe.src = targetUrl;
+
+  // تشغيل المشغل الملون فوراً وبسرعة فائقة
+  iframe.onload = function() {
       showPlayer();
-      v.play().catch(function(){});
-    });
-    hls.on(Hls.Events.ERROR, function(_, d) {
-      if (d.fatal) showErr(d.details || 'HLS fatal error');
-    });
-  } else {
-    v.src = src;
-    v.addEventListener('canplay', showPlayer, { once: true });
-    v.play().catch(function(err) { showErr(err.message); });
-  }
+  };
 }
 </script>
 </body>
