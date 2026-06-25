@@ -149,8 +149,18 @@ function buildVidLinkUrl(withProgress){
   });
   var saved=getSavedTime();
   if(withProgress && saved>8) q.set('startAt', String(saved));
-  if(autoSubtitle&&autoSubtitle.url){ q.set('sub_file', autoSubtitle.url); q.set('sub_label', 'العربية'); }
-  if(sub){ q.set('sub_file', sub); q.set('sub_label', subLabel || 'العربية'); }
+  if(autoSubtitle&&autoSubtitle.url){
+    q.set('sub_file', autoSubtitle.url);
+    q.set('sub_label', 'العربية');
+    q.set('sub_lang', 'ar');
+    q.set('sub_default', 'true');
+  }
+  if(sub){
+    q.set('sub_file', sub);
+    q.set('sub_label', subLabel || 'العربية');
+    q.set('sub_lang', 'ar');
+    q.set('sub_default', 'true');
+  }
   return base+'?'+q.toString();
 }
 function setupVidLink(){

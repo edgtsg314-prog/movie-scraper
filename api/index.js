@@ -173,9 +173,22 @@ async function osLogin() {
 }
 
 async function getTmdbExternalId(id, season, episode) {
-  const type = season ? 'tv' : 'movie';
   if (!TMDB_API_KEY) return '';
-  const url = `https://api.themoviedb.org/3/${type}/${encodeURIComponent(id)}/external_ids?api_key=${TMDB_API_KEY}`;
+  // للأفلام: IMDb ID للفيلم.
+  // للحلقات: نحاول أولاً IMDb ID للحلقة نفسها لأنه أدق مع OpenSubtitles، ثم نرجع لمسلسل الأب كاحتياط.
+  if (season) {
+    try {
+      const epUrl = `https://api.themoviedb.org/3/tv/${encodeURIComponent(id)}/season/${encodeURIComponent(season)}/episode/${encodeURIComponent(episode || 1)}/external_ids?api_key=${TMDB_API_KEY}`;
+      const epData = await fetchJson(epUrl, { headers: { 'Accept': 'application/json' } });
+      if (epData.imdb_id) return epData.imdb_id;
+    } catch (_) {}
+    try {
+      const tvUrl = `https://api.themoviedb.org/3/tv/${encodeURIComponent(id)}/external_ids?api_key=${TMDB_API_KEY}`;
+      const tvData = await fetchJson(tvUrl, { headers: { 'Accept': 'application/json' } });
+      return tvData.imdb_id || '';
+    } catch (_) { return ''; }
+  }
+  const url = `https://api.themoviedb.org/3/movie/${encodeURIComponent(id)}/external_ids?api_key=${TMDB_API_KEY}`;
   const data = await fetchJson(url, { headers: { 'Accept': 'application/json' } });
   return data.imdb_id || '';
 }
@@ -225,10 +238,7 @@ async function findArabicSubtitle(id, season, episode) {
   const imdb = await getTmdbExternalId(id, season, episode);
   const qs = new URLSearchParams({ languages: SUB_LANG });
   if (imdb) qs.set('imdb_id', String(imdb).replace(/^tt/i, ''));
-  else {
-    // fallback by TMDB id if IMDb is unavailable
-    qs.set(season ? 'tmdb_id' : 'tmdb_id', String(id));
-  }
+  else qs.set('tmdb_id', String(id));
   if (season) {
     qs.set('season_number', String(season));
     qs.set('episode_number', String(episode || 1));
