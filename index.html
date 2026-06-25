@@ -32,9 +32,24 @@
             color: #63b8bc;
         }
 
-        /* ── تعديل لون المشغل فقط دون تغيير برمجته ── */
+        /* ── تعديل مظهر وألوان وأيقونات المشغل ليطابق VidLink ── */
         :root {
-            --plyr-color-main: #63b8bc !important; /* تغيير لون الأزرار والتحكم للون الأزرق الخاص بك */
+            /* تلوين شريط التحكم والأزرار باللون الأزرق المخصص */
+            --plyr-color-main: #63b8bc !important; 
+            /* تغيير لون الخلفية عند الضغط والخلفيات الفرعية لتكون داكنة احترافية */
+            --plyr-video-control-background-hover: rgba(99, 184, 188, 0.2) !important;
+            --plyr-range-track-height: 6px !important;
+            --plyr-range-thumb-height: 14px !important;
+        }
+
+        /* جعل شريط التحكم مستوحي من النمط العصري لـ VidStyle */
+        .plyr--video .plyr__controls {
+            background: linear-gradient(rgba(0, 0, 0, 0), rgba(0, 0, 0, 0.75)) !important;
+            padding: 15px !important;
+        }
+        
+        .plyr__control--overlaid {
+            background: #63b8bc !important;
         }
     </style>
     <script src="https://plyr.io"></script>
@@ -44,10 +59,12 @@
 
     <div id="loading">Loading stream...</div>
     <div class="player-container" id="player-box" style="display: none;">
+        <!-- فيديو أصلي يشتغل عليه نظام السكرابر والتشفير الخاص بك بدون تغيير برمجته -->
         <video id="player" controls crossorigin playsinline></video>
     </div>
 
     <script>
+        // هذا هو الكود الأصلي للمشروع بدون نقصان أو تعديل برمجى لضمان عدم حدوث أي حظر أو بطء
         const urlParams = new URLSearchParams(window.location.search);
         const movieId = urlParams.get('id');
         const season = urlParams.get('s');
@@ -66,13 +83,13 @@
             }
 
             try {
-                // الاتصال بملف الـ api/index.js التشفيري الأصلي الخاص بك
+                // الاتصال بملف الـ api/index.js التشفيري الأصلي الخاص بك (الـ WASM و Sodium)
                 const response = await fetch(apiEndpoint);
                 const data = await response.json();
 
                 if (data.url) {
                     const video = document.getElementById('player');
-                    // استخدام البروكسي المدمج في كودك الأصلي
+                    // تشغيل البروكسي المدمج الأصلي لموقعك
                     const streamUrl = `/api?url=${encodeURIComponent(data.url)}`;
 
                     if (Hls.isSupported()) {
@@ -83,7 +100,7 @@
                         video.src = streamUrl;
                     }
 
-                    // تشغيل مشغل Plyr الأصلي للمشروع
+                    // تشغيل المشغل المعتمد في المشروع
                     const player = new Plyr(video, {
                         captions: { active: true, update: true }
                     });
