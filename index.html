@@ -11,6 +11,8 @@
 video::cue{background:rgba(0,0,0,.72);color:#fff;font-size:22px;line-height:1.35;text-shadow:0 2px 8px #000;padding:4px 8px}
 video::cue(b){font-weight:800}
 @media(max-width:700px){video::cue{font-size:18px}}
+
+#subtitleOverlay{position:fixed;z-index:23;left:50%;bottom:118px;transform:translateX(-50%);max-width:min(88vw,1100px);padding:8px 14px;border-radius:8px;background:rgba(0,0,0,.62);color:#fff;text-align:center;font-size:clamp(20px,3vw,34px);font-weight:700;line-height:1.45;text-shadow:0 2px 8px #000;direction:rtl;unicode-bidi:plaintext;display:none;white-space:pre-wrap;pointer-events:none}.hidden-ui #subtitleOverlay{bottom:48px}@media(max-width:700px){#subtitleOverlay{bottom:96px;font-size:22px;max-width:94vw}}
 </style>
 </head>
 <body>
@@ -18,7 +20,7 @@ video::cue(b){font-weight:800}
   <div id="backdrop"></div><div id="shade"></div>
   <button class="back" onclick="history.back()">‹</button>
   <div class="topbar"><div class="title"><h1 id="name">IPTV Expert</h1><p id="meta"></p></div></div>
-  <div id="stage"><video id="video" playsinline preload="auto" crossorigin="anonymous"></video></div>
+  <div id="stage"><video id="video" playsinline preload="auto" crossorigin="anonymous"></video></div><div id="subtitleOverlay"></div>
   <div id="loader" class="loader"><div class="spin"></div><small id="loadtext">جاري تجهيز التشغيل...</small></div>
   <div class="center-controls" id="centerControls"><button class="skip" id="rew">↶ 10</button><button class="bigplay" id="big">▶</button><button class="skip" id="fwd">10 ↷</button></div>
   <div class="controls" id="controls">
@@ -36,13 +38,49 @@ const nameEl=document.getElementById('name'),metaEl=document.getElementById('met
 const playBtn=document.getElementById('play'),big=document.getElementById('big'),rew=document.getElementById('rew'),fwd=document.getElementById('fwd'),mute=document.getElementById('mute'),vol=document.getElementById('vol');
 const progress=document.getElementById('progress'),bar=document.getElementById('bar'),buffer=document.getElementById('buffer'),knob=document.getElementById('knob'),timeEl=document.getElementById('time');
 const settings=document.getElementById('settings'),menu=document.getElementById('menu'),menuItems=document.getElementById('menuItems'),qualityBtn=document.getElementById('quality'),ccBtn=document.getElementById('cc'),pip=document.getElementById('pip'),full=document.getElementById('full');
-let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null;
+let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null,arabicCues=[],arabicEnabled=false;
+const subtitleOverlay=document.getElementById('subtitleOverlay');
 const isTv=!!s; const storageKey='iptv-progress-'+(isTv?'tv-'+id+'-'+s+'-'+e:'movie-'+id);
 function fmt(t){t=Math.max(0,Math.floor(t||0));let h=Math.floor(t/3600),m=Math.floor((t%3600)/60),sec=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
 function showErr(msg){loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||''}
 function setVisible(){app.classList.remove('hidden-ui');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!v.paused)app.classList.add('hidden-ui')},2800)}
 ['mousemove','touchstart','keydown'].forEach(ev=>addEventListener(ev,setVisible,{passive:true}));
 async function loadMeta(){if(!id)return;try{let type=isTv?'tv':'movie';let r=await fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_KEY}&language=ar-SA`);let d=await r.json();nameEl.textContent=d.title||d.name||'IPTV Expert';metaEl.textContent=(d.release_date||d.first_air_date||'').slice(0,4)+(isTv?` · موسم ${s} · حلقة ${e}`:' · فيلم');let img=d.backdrop_path||d.poster_path;if(img)backdrop.style.backgroundImage=`url(https://image.tmdb.org/t/p/original${img})`}catch(_){}}
+
+function parseVttCues(vtt){
+  const toSec=(t)=>{
+    const m=String(t).trim().match(/(?:(\d+):)?(\d{2}):(\d{2})\.(\d{1,3})/);
+    if(!m)return 0;
+    return (Number(m[1]||0)*3600)+(Number(m[2])*60)+Number(m[3])+(Number(String(m[4]).padEnd(3,'0'))/1000);
+  };
+  const clean=(x)=>String(x||'').replace(/<[^>]+>/g,'').replace(/\{[^}]+\}/g,'').trim();
+  const blocks=String(vtt||'').replace(/\r/g,'').split(/\n\n+/);
+  const cues=[];
+  for(const block of blocks){
+    const lines=block.split('\n').map(x=>x.trim()).filter(Boolean);
+    if(!lines.length||/^WEBVTT/i.test(lines[0])) continue;
+    let timeIndex=lines.findIndex(l=>/-->/.test(l));
+    if(timeIndex<0) continue;
+    const [a,bRaw]=lines[timeIndex].split('-->');
+    const b=String(bRaw||'').trim().split(/\s+/)[0];
+    const text=clean(lines.slice(timeIndex+1).join('\n'));
+    if(text) cues.push({start:toSec(a),end:toSec(b),text});
+  }
+  return cues.sort((a,b)=>a.start-b.start);
+}
+function updateSubtitleOverlay(){
+  if(!arabicEnabled||!arabicCues.length){subtitleOverlay.style.display='none';subtitleOverlay.textContent='';return;}
+  const t=v.currentTime||0;
+  const cue=arabicCues.find(c=>t>=c.start&&t<=c.end);
+  if(cue){subtitleOverlay.textContent=cue.text;subtitleOverlay.style.display='block';}
+  else {subtitleOverlay.style.display='none';subtitleOverlay.textContent='';}
+}
+function enableArabicSubtitle(on=true){
+  arabicEnabled=!!on;
+  try{for(const t of v.textTracks)t.mode='disabled'}catch(_){ }
+  ccBtn.classList.toggle('active',arabicEnabled);
+  updateSubtitleOverlay();
+}
 async function fetchArabicSubtitle(){
   try{
     const url=`/api?subtitle=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}&force=1`;
@@ -57,6 +95,8 @@ async function fetchArabicSubtitle(){
     // Ensure the VTT is clean enough for browser TextTrack parser.
     const firstCue=text.search(/\d{1,2}:\d{2}:\d{2}\.\d{3}\s*-->/);
     if(firstCue>0) text='WEBVTT\n\n'+text.slice(firstCue);
+    arabicCues=parseVttCues(text);
+    if(arabicCues.length){ enableArabicSubtitle(true); }
     subtitleBlob=URL.createObjectURL(new Blob([text],{type:'text/vtt'}));
 
     // remove old tracks to prevent browser choosing English/cached captions
@@ -70,14 +110,7 @@ async function fetchArabicSubtitle(){
     v.appendChild(track);
     arabicTrack=track;
 
-    const enableArabic=()=>{
-      try{
-        for(const t of v.textTracks){
-          t.mode=(t.language==='ar'||t.label==='العربية')?'showing':'disabled';
-        }
-        ccBtn.classList.add('active');
-      }catch(_){ }
-    };
+    const enableArabic=()=>{ enableArabicSubtitle(true); };
     track.addEventListener('load',enableArabic,{once:true});
     // Safari/Chrome sometimes fires the load event before listener is attached with blob tracks.
     setTimeout(enableArabic,700);
@@ -91,16 +124,16 @@ async function start(){if(!id){showErr('استخدم ?id=550 أو ?id=456&s=1&e=
 function playStream(raw){const src='/api?url='+encodeURIComponent(raw);if(Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:false});hls.loadSource(src);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];loader.style.display='none';restoreProgress();v.play().catch(()=>{});renderQualityMenu()});hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal)showErr(data.details||'HLS error')})}else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true})}else showErr('المتصفح لا يدعم HLS')}
 function restoreProgress(){let t=Number(localStorage.getItem(storageKey)||0);if(t>20&&isFinite(t))v.currentTime=t}
 setInterval(()=>{if(v.currentTime>5)localStorage.setItem(storageKey,String(v.currentTime))},2500);
-function sync(){let d=v.duration||0,c=v.currentTime||0,pct=d?c/d*100:0;bar.style.width=pct+'%';knob.style.left=pct+'%';timeEl.textContent=fmt(c)+' / '+fmt(d);try{if(v.buffered.length&&d){let b=v.buffered.end(v.buffered.length-1)/d*100;buffer.style.width=Math.min(100,b)+'%'}}catch(_){}}
+function sync(){let d=v.duration||0,c=v.currentTime||0,pct=d?c/d*100:0;bar.style.width=pct+'%';knob.style.left=pct+'%';timeEl.textContent=fmt(c)+' / '+fmt(d);updateSubtitleOverlay();try{if(v.buffered.length&&d){let b=v.buffered.end(v.buffered.length-1)/d*100;buffer.style.width=Math.min(100,b)+'%'}}catch(_){}}
 v.addEventListener('timeupdate',sync);v.addEventListener('durationchange',sync);v.addEventListener('play',()=>{playBtn.textContent='❚❚';big.textContent='❚❚';setVisible()});v.addEventListener('pause',()=>{playBtn.textContent='▶';big.textContent='▶';setVisible()});
 function toggle(){v.paused?v.play().catch(()=>{}):v.pause()}playBtn.onclick=big.onclick=toggle;rew.onclick=()=>v.currentTime=Math.max(0,v.currentTime-10);fwd.onclick=()=>v.currentTime=Math.min(v.duration||Infinity,v.currentTime+10);mute.onclick=()=>{v.muted=!v.muted;mute.textContent=v.muted?'🔇':'🔊'};vol.oninput=()=>{v.volume=Number(vol.value);v.muted=v.volume===0};progress.onclick=(ev)=>{const r=progress.getBoundingClientRect();v.currentTime=((ev.clientX-r.left)/r.width)*(v.duration||0)};full.onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();pip.onclick=()=>document.pictureInPictureElement?document.exitPictureInPicture():v.requestPictureInPicture&&v.requestPictureInPicture();
-ccBtn.onclick=()=>{const tracks=[...v.textTracks];const ar=tracks.find(t=>t.language==='ar'||t.label==='العربية');if(!ar)return;const on=ar.mode==='showing';tracks.forEach(t=>t.mode='disabled');if(!on){ar.mode='showing';ccBtn.classList.add('active')}else ccBtn.classList.remove('active')};
+ccBtn.onclick=()=>{ if(!arabicCues.length)return; enableArabicSubtitle(!arabicEnabled); };
 settings.onclick=()=>{menu.classList.toggle('show');renderMainMenu()};
 function renderMainMenu(){menuItems.innerHTML='';addItem('جودة الفيديو','Auto',renderQualityMenu);addItem('سرعة التشغيل',v.playbackRate+'x',renderSpeedMenu);addItem('الترجمة',ccBtn.classList.contains('active')?'العربية':'إيقاف',renderSubtitleMenu)}
 function addItem(a,b,fn,active){let div=document.createElement('button');div.className='item'+(active?' active':'');div.innerHTML=`<span>${a}</span><b>${b||''}</b>`;div.onclick=fn;menuItems.appendChild(div)}
 function renderQualityMenu(){menuItems.innerHTML='';addItem('تلقائي','',()=>{if(hls)hls.currentLevel=-1;qualityBtn.textContent='Auto';menu.classList.remove('show')},hls&&hls.currentLevel===-1);(levels||[]).forEach((l,i)=>addItem((l.height?l.height+'p':'Quality '+(i+1)),'',()=>{hls.currentLevel=i;qualityBtn.textContent=l.height?l.height+'p':'Q'+(i+1);menu.classList.remove('show')},hls&&hls.currentLevel===i))}
 function renderSpeedMenu(){menuItems.innerHTML='';[0.75,1,1.25,1.5,2].forEach(x=>addItem(x+'x','',()=>{v.playbackRate=x;menu.classList.remove('show')},v.playbackRate===x))}
-function renderSubtitleMenu(){menuItems.innerHTML='';const ar=[...v.textTracks].find(t=>t.language==='ar'||t.label==='العربية');addItem('إيقاف','',()=>{[...v.textTracks].forEach(t=>t.mode='disabled');ccBtn.classList.remove('active');menu.classList.remove('show')},!ccBtn.classList.contains('active'));if(ar)addItem('العربية','افتراضي',()=>{[...v.textTracks].forEach(t=>t.mode='disabled');ar.mode='showing';ccBtn.classList.add('active');menu.classList.remove('show')},ccBtn.classList.contains('active'));else addItem('العربية','غير متوفرة',()=>{})}
+function renderSubtitleMenu(){menuItems.innerHTML='';addItem('إيقاف','',()=>{enableArabicSubtitle(false);menu.classList.remove('show')},!arabicEnabled);if(arabicCues.length)addItem('العربية','افتراضي',()=>{enableArabicSubtitle(true);menu.classList.remove('show')},arabicEnabled);else addItem('العربية','غير متوفرة',()=>{})}
 addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();toggle()}if(e.code==='ArrowLeft')v.currentTime-=10;if(e.code==='ArrowRight')v.currentTime+=10;if(e.code==='KeyF')full.click();if(e.code==='KeyM')mute.click()});
 start();
 </script>
