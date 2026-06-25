@@ -5,25 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Zenith Movies & TV</title>
     <style>
-        body { 
-            background-color: #0c0c0c; 
-            color: #fff; 
-            font-family: sans-serif; 
-            margin: 0; 
-            padding: 20px; 
-            text-align: center; 
-        }
+        body { background-color: #0c0c0c; color: #fff; font-family: sans-serif; margin: 0; padding: 20px; text-align: center; }
         .wrapper { max-width: 1000px; margin: 0 auto; }
-        .player-container { 
-            position: relative; 
-            padding-bottom: 56.25%; 
-            height: 0; 
-            overflow: hidden; 
-            background: #000; 
-            border-radius: 12px; 
-            box-shadow: 0 10px 30px rgba(0,0,0,0.7); 
-            margin-top: 20px; 
-        }
+        .player-container { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; background: #000; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.7); margin-top: 20px; }
         .player-container iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
         #loading { color: #63b8bc; font-size: 18px; margin-top: 50px; font-weight: bold; }
     </style>
@@ -31,38 +15,56 @@
 <body>
 
     <div class="wrapper">
-        <div id="loading">جاري تهيئة مشغل الفيديو العصري...</div>
+        <div id="loading">جاري فك تشفير السيرفر وتشغيل البث الآمن...</div>
         <div class="player-container" id="player-box" style="display: none;">
-            <!-- المشغل المحمي والأزرق النظيف بدون إعلانات -->
+            <!-- المشغل المطور والأزرق النظيف بدون حظر وبدون إعلانات -->
             <iframe id="secure-player" src="" allowfullscreen allow="autoplay; encrypted-media"></iframe>
         </div>
     </div>
 
     <script>
-        // قراءة المعرفات من الرابط
         const urlParams = new URLSearchParams(window.location.search);
         const movieId = urlParams.get('id');
         const season = urlParams.get('s') || "";
         const episode = urlParams.get('e') || "";
 
         if (!movieId) {
-            document.getElementById('loading').innerText = "تنبيه: يرجى تحديد معرف العمل في الرابط (مثال: ?id=1083381)";
+            document.getElementById('loading').innerText = "تنبيه: يرجى تحديد معرف العمل في الرابط (مثال: ?id=1280738)";
         } else {
-            // بناء رابط البث الموجه مباشرة لخوادم المشغل النظيف
-            let targetUrl = season 
-                ? `https://vidlink.pro{movieId}/${season}/${episode}`
-                : `https://vidlink.pro{movieId}`;
+            fetchStreamFromBackend();
+        }
 
-            // حقن الألوان المخصصة (الأزرق) وزر الحلقة التالية والترجمة التلقائية
-            targetUrl += `?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true`;
+        async function fetchStreamFromBackend() {
+            // استدعاء ملف الـ Backend الأصلي الخاص بك (api/index.js) لتشغيل الـ WASM وفك التشفير
+            let apiEndpoint = `/api?id=${movieId}`;
+            if (season && episode) {
+                apiEndpoint += `&s=${season}&e=${episode}`;
+            }
 
-            // وضع الرابط في الـ iframe وتشغيله فوراً
-            const playerIframe = document.getElementById('secure-player');
-            playerIframe.src = targetUrl;
+            try {
+                const response = await fetch(apiEndpoint);
+                const data = await response.json();
+                
+                // إذا نجح الـ Backend القوي الخاص بك في استخراج الرابط المباشر
+                if (data.url) {
+                    // نأخذ الرابط النظيف المباشر ونحقنه داخل مشغل الفيديو السريع والمخصص بالألوان بدون حظر الدومين
+                    const playerIframe = document.getElementById('secure-player');
+                    
+                    // تمرير الفيديو عبر الـ Proxy المدمج في كودك وإضافة بارامترات اللون الأزرق والأزرار العربية
+                    let cleanPlayerUrl = `https://vidlink.pro{encodeURIComponent(data.url)}&primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&nextbutton=true`;
+                    
+                    playerIframe.src = cleanPlayerUrl;
 
-            // إخفاء عبارة التحميل وعرض السينما الخاصة بك
-            document.getElementById('loading').style.display = 'none';
-            document.getElementById('player-box').style.display = 'block';
+                    // عرض المشغل فوراً وإخفاء التحميل
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('player-box').style.display = 'block';
+                } else {
+                    document.getElementById('loading').innerText = "عذراً، هذا العمل غير متوفر في السيرفر حالياً.";
+                }
+            } catch (error) {
+                document.getElementById('loading').innerText = "حدث خطأ أثناء فك تشفير رابط البث.";
+                console.error(error);
+            }
         }
     </script>
 </body>
