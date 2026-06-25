@@ -230,6 +230,72 @@ async function osSearchArabicOnce(params) {
   return data?.data || [];
 }
 
+function subtitleFileId(item) {
+  const files = item?.attributes?.files || [];
+  return files[0]?.file_id || item?.id || '';
+}
+
+function normalizeText(x) {
+  return String(x || '').toLowerCase();
+}
+
+function scoreArabicSubtitle(item, info, usedParams) {
+  const a = item.attributes || {};
+  const feature = a.feature_details || {};
+  const files = a.files || [];
+  let score = 0;
+
+  // Strong identity match. IMDb based searches are safest; title fallback is weakest.
+  if (usedParams?.imdb_id) score += 120;
+  if (usedParams?.tmdb_id) score += 70;
+  if (usedParams?.query) score += 35;
+
+  const release = normalizeText([a.release, a.release_name, a.file_name, files[0]?.file_name].join(' '));
+  const moviehash = a.moviehash_match || a.movie_hash_match;
+  if (moviehash) score += 80;
+
+  if (a.from_trusted) score += 30;
+  if (a.ai_translated === false) score += 10;
+  if (a.machine_translated === false) score += 10;
+  if (a.hearing_impaired) score -= 12;
+
+  const rating = Number(a.ratings || a.rating || 0);
+  const downloads = Number(a.download_count || a.downloads || 0);
+  score += Math.min(25, rating * 3);
+  score += Math.min(30, Math.log10(downloads + 1) * 10);
+
+  // Prefer common scene releases. This helps pick subtitles synced to stream sources.
+  if (/web[- .]?dl|webrip|web/.test(release)) score += 20;
+  if (/bluray|blu[- .]?ray|brrip/.test(release)) score += 14;
+  if (/hdrip|dvdrip/.test(release)) score += 5;
+  if (/cam|hdcam|ts|telesync/.test(release)) score -= 25;
+
+  if (info.type === 'episode') {
+    if (String(feature.season_number || a.season_number || '') === String(info.season)) score += 35;
+    if (String(feature.episode_number || a.episode_number || '') === String(info.episode)) score += 35;
+  }
+
+  // If OS returns feature year/title, use it as a sanity boost.
+  if (info.year && String(feature.year || a.year || '') === String(info.year)) score += 12;
+  const titleBag = normalizeText([feature.title, a.movie_name, a.movie_title, a.title].join(' '));
+  if (info.title && titleBag && titleBag.includes(normalizeText(info.title).slice(0, 10))) score += 8;
+
+  return score;
+}
+
+function subtitleDisplayName(item, index, score) {
+  const a = item.attributes || {};
+  const files = a.files || [];
+  const release = a.release || a.release_name || files[0]?.file_name || a.movie_name || '';
+  const parts = [];
+  parts.push(`العربية ${index + 1}`);
+  if (release) parts.push(String(release).slice(0, 60));
+  if (a.download_count) parts.push(`${a.download_count} تحميل`);
+  if (a.ratings) parts.push(`تقييم ${a.ratings}`);
+  parts.push(`نقاط ${Math.round(score)}`);
+  return parts.join(' · ');
+}
+
 async function osSearchArabicSmart(info) {
   const attempts = [];
   const isEpisode = info.type === 'episode';
@@ -237,50 +303,74 @@ async function osSearchArabicSmart(info) {
 
   // 1) Best: IMDb ID. OpenSubtitles generally expects IMDb without "tt" and without leading zeroes.
   for (const imdb of imdbVariants(info.episodeImdbId || info.imdbId)) {
-    attempts.push({ type, imdb_id: imdb, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined });
+    attempts.push({ type, imdb_id: imdb, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined, _method: 'episode/movie imdb' });
   }
 
   // 2) If exact episode IMDb did not work, try show IMDb + S/E.
   if (isEpisode && info.showImdbId && info.showImdbId !== info.episodeImdbId) {
     for (const imdb of imdbVariants(info.showImdbId)) {
-      attempts.push({ type: 'episode', imdb_id: imdb, season_number: info.season, episode_number: info.episode });
+      attempts.push({ type: 'episode', imdb_id: imdb, season_number: info.season, episode_number: info.episode, _method: 'show imdb + S/E' });
     }
   }
 
-  // 3) TMDB fallback. This is less accurate, but useful when OpenSubtitles indexed TMDB directly.
-  attempts.push({ type, tmdb_id: info.tmdbId, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined });
+  // 3) TMDB fallback.
+  attempts.push({ type, tmdb_id: info.tmdbId, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined, _method: 'tmdb' });
 
-  // 4) Title/year fallback. This catches older movies where ID lookup misses but Arabic exists.
+  // 4) Title/year fallback.
   if (info.title) {
-    attempts.push({ type, query: info.title, year: info.year, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined });
-    if (isEpisode && info.episodeTitle) attempts.push({ type, query: `${info.title} ${info.episodeTitle}`, year: info.year, season_number: info.season, episode_number: info.episode });
+    attempts.push({ type, query: info.title, year: info.year, season_number: isEpisode ? info.season : undefined, episode_number: isEpisode ? info.episode : undefined, _method: 'title + year' });
+    if (isEpisode && info.episodeTitle) attempts.push({ type, query: `${info.title} ${info.episodeTitle}`, year: info.year, season_number: info.season, episode_number: info.episode, _method: 'show + episode title' });
   }
 
   let lastError = null;
-  for (const params of attempts) {
+  const seen = new Set();
+  const candidates = [];
+
+  for (const rawParams of attempts) {
+    const { _method, ...params } = rawParams;
     try {
       const results = await osSearchArabicOnce(params);
-      const best = pickBestArabic(results);
-      if (best) return { best, used: params, count: results.length };
+      const arabic = (results || []).filter(x => {
+        const a = x.attributes || {};
+        return String(a.language || '').toLowerCase() === 'ar' || /arabic|arab|العربية/i.test(String(a.language || '') + ' ' + String(a.release || '') + ' ' + String(a.file_name || ''));
+      });
+      for (const item of arabic) {
+        const fid = subtitleFileId(item);
+        if (!fid || seen.has(fid)) continue;
+        seen.add(fid);
+        const score = scoreArabicSubtitle(item, info, rawParams);
+        candidates.push({ item, score, used: params, method: _method || 'unknown' });
+      }
     } catch (err) {
       lastError = err;
     }
   }
-  if (lastError) console.warn('OpenSubtitles last search error:', lastError.message);
-  return { best: null, used: null, count: 0 };
+
+  candidates.sort((a, b) => b.score - a.score);
+  if (lastError && !candidates.length) console.warn('OpenSubtitles last search error:', lastError.message);
+  return { best: candidates[0]?.item || null, used: candidates[0]?.used || null, count: candidates.length, candidates, info };
 }
 
-function pickBestArabic(results) {
-  const items = (results || []).filter(x => {
-    const a = x.attributes || {};
-    return String(a.language || '').toLowerCase() === 'ar' || /arabic|arab/i.test(String(a.language || '') + ' ' + String(a.release || ''));
-  });
-  return items.sort((a, b) => {
-    const aa = a.attributes || {}, bb = b.attributes || {};
-    const ai = (aa.ratings || 0) + (aa.download_count || 0) / 1000 + (aa.from_trusted ? 10 : 0);
-    const bi = (bb.ratings || 0) + (bb.download_count || 0) / 1000 + (bb.from_trusted ? 10 : 0);
-    return bi - ai;
-  })[0];
+async function getArabicSubtitleCandidates(tmdbId, season, episode) {
+  const info = await getMediaIdentifiers(tmdbId, season, episode);
+  const search = await osSearchArabicSmart(info);
+  return search.candidates.map((c, i) => {
+    const a = c.item.attributes || {};
+    const file = a.files?.[0] || {};
+    return {
+      index: i,
+      file_id: file.file_id,
+      score: Math.round(c.score),
+      label: subtitleDisplayName(c.item, i, c.score),
+      release: a.release || a.release_name || file.file_name || '',
+      downloads: a.download_count || 0,
+      ratings: a.ratings || 0,
+      trusted: !!a.from_trusted,
+      hearing_impaired: !!a.hearing_impaired,
+      method: c.method,
+      used: c.used
+    };
+  }).filter(x => x.file_id);
 }
 
 async function osDownloadVtt(fileId) {
@@ -307,16 +397,17 @@ async function osDownloadVtt(fileId) {
   return srtToVtt(subtitleText);
 }
 
-async function getArabicSubtitleVtt(tmdbId, season, episode) {
-  const info = await getMediaIdentifiers(tmdbId, season, episode);
-  const { best, used } = await osSearchArabicSmart(info);
-  if (!best) {
+async function getArabicSubtitleVtt(tmdbId, season, episode, choice) {
+  const list = await getArabicSubtitleCandidates(tmdbId, season, episode);
+  if (!list.length) {
+    const info = await getMediaIdentifiers(tmdbId, season, episode);
     throw new Error(`No Arabic subtitle found (tmdb=${tmdbId}${season ? ` s${season}e${episode || 1}` : ''}, imdb=${info.imdbId || 'none'})`);
   }
-  const file = best.attributes?.files?.[0];
-  if (!file?.file_id) throw new Error('Arabic subtitle has no downloadable file_id');
-  const vtt = await osDownloadVtt(file.file_id);
-  return vtt;
+  let idx = Number(choice || 0);
+  if (!Number.isFinite(idx) || idx < 0 || idx >= list.length) idx = 0;
+  const chosen = list[idx];
+  const vtt = await osDownloadVtt(chosen.file_id);
+  return { vtt, chosen, total: list.length };
 }
 
 // ── Vercel serverless handler ─────────────────────────────────────────────────
@@ -343,6 +434,27 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // Arabic subtitle candidates: /api?subtitle_list=1&id=238 OR /api?subtitle_list=1&id=94997&s=1&e=1
+  if (q.subtitle_list) {
+    if (!q.id) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: 'missing id' }));
+    }
+    try {
+      const info = await getMediaIdentifiers(q.id, q.s, q.e || '1');
+      const subtitles = await getArabicSubtitleCandidates(q.id, q.s, q.e || '1');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.end(JSON.stringify({ ok: true, info, count: subtitles.length, subtitles }, null, 2));
+    } catch (err) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+  }
+
   // Arabic subtitle VTT: /api?subtitle=1&id=238 OR /api?subtitle=1&id=94997&s=1&e=1
   if (q.subtitle) {
     if (!q.id) {
@@ -351,11 +463,13 @@ module.exports = async function handler(req, res) {
       return res.end(JSON.stringify({ ok: false, error: 'missing id' }));
     }
     try {
-      const vtt = await getArabicSubtitleVtt(q.id, q.s, q.e || '1');
+      const result = await getArabicSubtitleVtt(q.id, q.s, q.e || '1', q.choice);
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.setHeader('X-Subtitle-Choice', String(result.chosen?.index ?? 0));
+      res.setHeader('X-Subtitle-Label', encodeURIComponent(result.chosen?.label || 'Arabic'));
       res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
-      return res.end(vtt);
+      return res.end(result.vtt);
     } catch (err) {
       res.statusCode = 404;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');

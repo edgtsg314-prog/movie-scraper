@@ -38,9 +38,9 @@ const nameEl=document.getElementById('name'),metaEl=document.getElementById('met
 const playBtn=document.getElementById('play'),big=document.getElementById('big'),rew=document.getElementById('rew'),fwd=document.getElementById('fwd'),mute=document.getElementById('mute'),vol=document.getElementById('vol');
 const progress=document.getElementById('progress'),bar=document.getElementById('bar'),buffer=document.getElementById('buffer'),knob=document.getElementById('knob'),timeEl=document.getElementById('time');
 const settings=document.getElementById('settings'),menu=document.getElementById('menu'),menuItems=document.getElementById('menuItems'),qualityBtn=document.getElementById('quality'),ccBtn=document.getElementById('cc'),pip=document.getElementById('pip'),full=document.getElementById('full');
-let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null,arabicCues=[],arabicEnabled=false;
+let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null,arabicCues=[],arabicEnabled=false,subtitleOptions=[],selectedSubtitleChoice=0,subtitleOffset=0,currentSubtitleLabel='العربية';
 const subtitleOverlay=document.getElementById('subtitleOverlay');
-const isTv=!!s; const storageKey='iptv-progress-'+(isTv?'tv-'+id+'-'+s+'-'+e:'movie-'+id);
+const isTv=!!s; const storageKey='iptv-progress-'+(isTv?'tv-'+id+'-'+s+'-'+e:'movie-'+id); selectedSubtitleChoice=Number(localStorage.getItem(storageKey+'-sub-choice')||0); subtitleOffset=Number(localStorage.getItem(storageKey+'-sub-offset')||0);
 function fmt(t){t=Math.max(0,Math.floor(t||0));let h=Math.floor(t/3600),m=Math.floor((t%3600)/60),sec=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
 function showErr(msg){loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||''}
 function setVisible(){app.classList.remove('hidden-ui');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!v.paused)app.classList.add('hidden-ui')},2800)}
@@ -70,7 +70,7 @@ function parseVttCues(vtt){
 }
 function updateSubtitleOverlay(){
   if(!arabicEnabled||!arabicCues.length){subtitleOverlay.style.display='none';subtitleOverlay.textContent='';return;}
-  const t=v.currentTime||0;
+  const t=(v.currentTime||0)+subtitleOffset;
   const cue=arabicCues.find(c=>t>=c.start&&t<=c.end);
   if(cue){subtitleOverlay.textContent=cue.text;subtitleOverlay.style.display='block';}
   else {subtitleOverlay.style.display='none';subtitleOverlay.textContent='';}
@@ -81,9 +81,31 @@ function enableArabicSubtitle(on=true){
   ccBtn.classList.toggle('active',arabicEnabled);
   updateSubtitleOverlay();
 }
-async function fetchArabicSubtitle(){
+async function loadSubtitleOptions(){
   try{
-    const url=`/api?subtitle=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}&force=1`;
+    const url=`/api?subtitle_list=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`;
+    const r=await fetch(url,{cache:'no-store'});
+    const d=await r.json().catch(()=>null);
+    subtitleOptions=(d&&d.ok&&Array.isArray(d.subtitles))?d.subtitles:[];
+    if(selectedSubtitleChoice<0||selectedSubtitleChoice>=subtitleOptions.length) selectedSubtitleChoice=0;
+    return subtitleOptions;
+  }catch(err){
+    console.warn('Arabic subtitle list failed', err);
+    subtitleOptions=[];
+    return [];
+  }
+}
+async function fetchArabicSubtitle(choice=selectedSubtitleChoice){
+  try{
+    if(!subtitleOptions.length) await loadSubtitleOptions();
+    if(!subtitleOptions.length){
+      console.warn('No Arabic subtitle candidates');
+      return false;
+    }
+    selectedSubtitleChoice=Number(choice||0);
+    localStorage.setItem(storageKey+'-sub-choice',String(selectedSubtitleChoice));
+    currentSubtitleLabel=subtitleOptions[selectedSubtitleChoice]?.label||'العربية';
+    const url=`/api?subtitle=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}&choice=${encodeURIComponent(selectedSubtitleChoice)}&force=1`;
     const r=await fetch(url,{cache:'no-store'});
     const ct=(r.headers.get('content-type')||'').toLowerCase();
     if(!r.ok||!ct.includes('text/vtt')){
@@ -129,11 +151,28 @@ v.addEventListener('timeupdate',sync);v.addEventListener('durationchange',sync);
 function toggle(){v.paused?v.play().catch(()=>{}):v.pause()}playBtn.onclick=big.onclick=toggle;rew.onclick=()=>v.currentTime=Math.max(0,v.currentTime-10);fwd.onclick=()=>v.currentTime=Math.min(v.duration||Infinity,v.currentTime+10);mute.onclick=()=>{v.muted=!v.muted;mute.textContent=v.muted?'🔇':'🔊'};vol.oninput=()=>{v.volume=Number(vol.value);v.muted=v.volume===0};progress.onclick=(ev)=>{const r=progress.getBoundingClientRect();v.currentTime=((ev.clientX-r.left)/r.width)*(v.duration||0)};full.onclick=()=>document.fullscreenElement?document.exitFullscreen():document.documentElement.requestFullscreen();pip.onclick=()=>document.pictureInPictureElement?document.exitPictureInPicture():v.requestPictureInPicture&&v.requestPictureInPicture();
 ccBtn.onclick=()=>{ if(!arabicCues.length)return; enableArabicSubtitle(!arabicEnabled); };
 settings.onclick=()=>{menu.classList.toggle('show');renderMainMenu()};
-function renderMainMenu(){menuItems.innerHTML='';addItem('جودة الفيديو','Auto',renderQualityMenu);addItem('سرعة التشغيل',v.playbackRate+'x',renderSpeedMenu);addItem('الترجمة',ccBtn.classList.contains('active')?'العربية':'إيقاف',renderSubtitleMenu)}
+function renderMainMenu(){menuItems.innerHTML='';addItem('جودة الفيديو','Auto',renderQualityMenu);addItem('سرعة التشغيل',v.playbackRate+'x',renderSpeedMenu);addItem('الترجمة',ccBtn.classList.contains('active')?('العربية '+(subtitleOffset?subtitleOffset.toFixed(1)+'ث':'')):'إيقاف',renderSubtitleMenu)}
 function addItem(a,b,fn,active){let div=document.createElement('button');div.className='item'+(active?' active':'');div.innerHTML=`<span>${a}</span><b>${b||''}</b>`;div.onclick=fn;menuItems.appendChild(div)}
 function renderQualityMenu(){menuItems.innerHTML='';addItem('تلقائي','',()=>{if(hls)hls.currentLevel=-1;qualityBtn.textContent='Auto';menu.classList.remove('show')},hls&&hls.currentLevel===-1);(levels||[]).forEach((l,i)=>addItem((l.height?l.height+'p':'Quality '+(i+1)),'',()=>{hls.currentLevel=i;qualityBtn.textContent=l.height?l.height+'p':'Q'+(i+1);menu.classList.remove('show')},hls&&hls.currentLevel===i))}
 function renderSpeedMenu(){menuItems.innerHTML='';[0.75,1,1.25,1.5,2].forEach(x=>addItem(x+'x','',()=>{v.playbackRate=x;menu.classList.remove('show')},v.playbackRate===x))}
-function renderSubtitleMenu(){menuItems.innerHTML='';addItem('إيقاف','',()=>{enableArabicSubtitle(false);menu.classList.remove('show')},!arabicEnabled);if(arabicCues.length)addItem('العربية','افتراضي',()=>{enableArabicSubtitle(true);menu.classList.remove('show')},arabicEnabled);else addItem('العربية','غير متوفرة',()=>{})}
+function renderSubtitleMenu(){
+  menuItems.innerHTML='';
+  addItem('إيقاف','',()=>{enableArabicSubtitle(false);menu.classList.remove('show')},!arabicEnabled);
+  if(!subtitleOptions.length){addItem('العربية','غير متوفرة',()=>{});return;}
+  subtitleOptions.slice(0,8).forEach((opt,i)=>{
+    const label=(i===0?'الأفضل · ':'')+(opt.label||('العربية '+(i+1)));
+    addItem(label, i===selectedSubtitleChoice?'مفعّلة':'', async()=>{
+      loader.style.display='flex';
+      await fetchArabicSubtitle(i);
+      loader.style.display='none';
+      enableArabicSubtitle(true);
+      menu.classList.remove('show');
+    }, arabicEnabled&&i===selectedSubtitleChoice);
+  });
+  addItem('تأخير الترجمة 0.5ث','',()=>{subtitleOffset-=0.5;localStorage.setItem(storageKey+'-sub-offset',String(subtitleOffset));renderSubtitleMenu();},false);
+  addItem('تقديم الترجمة 0.5ث','',()=>{subtitleOffset+=0.5;localStorage.setItem(storageKey+'-sub-offset',String(subtitleOffset));renderSubtitleMenu();},false);
+  addItem('إعادة ضبط التزامن',subtitleOffset.toFixed(1)+'ث',()=>{subtitleOffset=0;localStorage.setItem(storageKey+'-sub-offset','0');renderSubtitleMenu();},subtitleOffset===0);
+}
 addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();toggle()}if(e.code==='ArrowLeft')v.currentTime-=10;if(e.code==='ArrowRight')v.currentTime+=10;if(e.code==='KeyF')full.click();if(e.code==='KeyM')mute.click()});
 start();
 </script>
