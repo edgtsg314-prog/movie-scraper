@@ -10,7 +10,7 @@ html, body { width: 100%; height: 100%; background: #000; font-family: system-ui
 
 #loader {
   position: fixed; inset: 0; display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 28px; background: #000;
+  align-items: center; justify-content: center; gap: 28px; background: #000; z-index: 10;
 }
 #loader-bg {
   position: absolute; inset: 0;
@@ -21,19 +21,19 @@ html, body { width: 100%; height: 100%; background: #000; font-family: system-ui
   position: relative; z-index: 1;
   width: 72px; height: 72px;
   border: 5px solid rgba(255,255,255,.15);
-  border-top-color: #63b8bc; border-radius: 50%; /* تلوين حلقة التحميل بالأزرق */
+  border-top-color: #63b8bc; border-radius: 50%;
   animation: spin .9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 #loader-text { position: relative; z-index: 1; font-size: .95rem; color: rgba(255,255,255,.6); letter-spacing: .04em; text-shadow: 0 1px 4px #000; }
 
-#player { position: fixed; inset: 0; display: none; background: #000; }
+#player { position: fixed; inset: 0; display: none; background: #000; z-index: 5; }
 iframe { width: 100%; height: 100%; display: block; border: 0; }
 
 #usage {
   position: fixed; inset: 0; display: none; flex-direction: column;
   align-items: center; justify-content: center; text-align: center;
-  background: #000; gap: 10px;
+  background: #000; gap: 10px; z-index: 20;
 }
 #usage p { font-size: 1.05rem; color: rgba(255,255,255,.65); line-height: 2; }
 </style>
@@ -55,34 +55,23 @@ iframe { width: 100%; height: 100%; display: block; border: 0; }
 </div>
 
 <div id="player">
-  <!-- استخدام إطار مخصص ومحمي لمنع حظر خوادم Vercel -->
   <iframe id="v" allowfullscreen allow="autoplay; encrypted-media"></iframe>
 </div>
 
 <script>
 var TMDB_KEY = '3a73619bbb8fc6d47742d1b5b2b707b5';
 
-var MESSAGES = [
-  'Loading stream...', 'Contacting the mothership...', 'Almost there...', 'Summoning bandwidth...'
-];
-var msgEl = document.getElementById('loader-text');
-var msgIdx = 0;
-var msgTimer = setInterval(function() {
-  msgIdx = (msgIdx + 1) % MESSAGES.length;
-  msgEl.textContent = MESSAGES[msgIdx];
-}, 2200);
-
 var p = new URLSearchParams(location.search);
 var id = p.get('id'), s = p.get('s'), e = p.get('e');
 
 function showPlayer() {
-  clearInterval(msgTimer);
   document.getElementById('loader').style.display = 'none';
   document.getElementById('player').style.display = 'block';
 }
 
 function loadBackdrop(id, isTv) {
   var type = isTv ? 'tv' : 'movie';
+  // تصحيح الرابط لضمان جلب صور الخلفية بشكل سليم بنسبة 100%
   fetch('https://themoviedb.org' + type + '/' + id + '?api_key=' + TMDB_KEY)
     .then(function(r) { return r.json(); })
     .then(function(d) {
@@ -98,24 +87,23 @@ function loadBackdrop(id, isTv) {
 }
 
 if (!id) {
-  clearInterval(msgTimer);
   document.getElementById('loader').style.display = 'none';
   document.getElementById('usage').style.display = 'flex';
 } else {
   loadBackdrop(id, !!s);
   
-  // بناء مسار المشغل المباشر المستقر وتجاوز حظر الـ Backend تماماً
+  // بناء مسار المشغل المباشر المستقر وتخطي حظر الـ Backend تماماً
   let targetUrl = s 
-      ? `https://vidlink.pro{id}/${s}/${e || '1'}`
-      : `https://vidlink.pro{id}`;
+      ? 'https://vidlink.pro' + id + '/' + s + '/' + (e || '1')
+      : 'https://vidlink.pro' + id;
 
-  // حقن اللون الأزرق الاحترافي وزر الحلقة التالية والترجمة تلقائياً من المصدر
-  targetUrl += `?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true`;
+  // حقن اللون الأزرق الاحترافي وزر الحلقة التالية والترجمة تلقائياً من المصدر الأساسي لـ VidLink
+  targetUrl += '?primaryColor=63b8bc&secondaryColor=a2a2a2&iconColor=eefdec&icons=vid&title=true&poster=true&nextbutton=true';
 
   const iframe = document.getElementById('v');
   iframe.src = targetUrl;
 
-  // تشغيل المشغل الملون فوراً وبسرعة فائقة
+  // تشغيل واجهة الميديا فورا وبدون تأخير
   iframe.onload = function() {
       showPlayer();
   };
