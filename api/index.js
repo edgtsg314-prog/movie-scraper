@@ -413,26 +413,108 @@ async function getArabicSubtitleVtt(tmdbId, season, episode, choice) {
 
 
 // ── Live Channels Manager ───────────────────────────────────────────────────
+// Works locally with data/live-channels.json.
+// On Vercel, filesystem is read-only, so this also supports Vercel KV / Upstash Redis.
+// Env supported:
+//   KV_REST_API_URL + KV_REST_API_TOKEN
+//   or UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN
+// Optional initial static JSON:
+//   LIVE_CHANNELS_JSON='[{"id":"bein1","name":"beIN 1","stream":"https://..."}]'
 const LIVE_DB_PATH = path.join(process.cwd(), 'data', 'live-channels.json');
-function ensureLiveDb() {
+const LIVE_KV_KEY = process.env.LIVE_CHANNELS_KV_KEY || 'iptvexpert:live-channels';
+const KV_URL = process.env.KV_REST_API_URL || process.env.UPSTASH_REDIS_REST_URL || '';
+const KV_TOKEN = process.env.KV_REST_API_TOKEN || process.env.UPSTASH_REDIS_REST_TOKEN || '';
+let memoryLiveChannels = null;
+
+function hasKvStorage() {
+  return !!(KV_URL && KV_TOKEN);
+}
+
+function storageMode() {
+  if (hasKvStorage()) return 'kv';
+  if (canWriteLocalFile()) return 'file';
+  return 'memory';
+}
+
+function canWriteLocalFile() {
   try {
     const dir = path.dirname(LIVE_DB_PATH);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    if (!fs.existsSync(LIVE_DB_PATH)) fs.writeFileSync(LIVE_DB_PATH, '[]\n', 'utf8');
-  } catch (_) {}
+    const test = path.join(dir, '.write-test');
+    fs.writeFileSync(test, '1');
+    fs.unlinkSync(test);
+    return true;
+  } catch (_) {
+    return false;
+  }
 }
-function readLiveChannels() {
-  ensureLiveDb();
+
+function initialLiveChannels() {
+  if (Array.isArray(memoryLiveChannels)) return memoryLiveChannels;
+  try {
+    if (process.env.LIVE_CHANNELS_JSON) {
+      const arr = JSON.parse(process.env.LIVE_CHANNELS_JSON);
+      if (Array.isArray(arr)) return (memoryLiveChannels = arr.map(safeChannel));
+    }
+  } catch (_) {}
   try {
     const raw = fs.readFileSync(LIVE_DB_PATH, 'utf8');
     const arr = JSON.parse(raw || '[]');
-    return Array.isArray(arr) ? arr : [];
-  } catch (_) { return []; }
+    return (memoryLiveChannels = (Array.isArray(arr) ? arr : []).map(safeChannel));
+  } catch (_) {
+    return (memoryLiveChannels = []);
+  }
 }
-function writeLiveChannels(list) {
-  ensureLiveDb();
-  fs.writeFileSync(LIVE_DB_PATH, JSON.stringify(list, null, 2), 'utf8');
+
+async function kvFetch(commandParts) {
+  const url = KV_URL.replace(/\/$/, '') + '/' + commandParts.map(x => encodeURIComponent(String(x))).join('/');
+  const r = await fetch(url, {
+    headers: { Authorization: `Bearer ${KV_TOKEN}`, Accept: 'application/json' },
+    cache: 'no-store'
+  });
+  const text = await r.text();
+  if (!r.ok) throw new Error(`KV ${r.status}: ${text.slice(0, 180)}`);
+  return JSON.parse(text);
 }
+
+async function readLiveChannels() {
+  if (hasKvStorage()) {
+    try {
+      const d = await kvFetch(['get', LIVE_KV_KEY]);
+      const raw = d.result;
+      if (!raw) {
+        const init = initialLiveChannels().map(safeChannel);
+        if (init.length) await writeLiveChannels(init);
+        return init;
+      }
+      const arr = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      return (Array.isArray(arr) ? arr : []).map(safeChannel);
+    } catch (err) {
+      console.warn('Live KV read failed, using memory/file fallback:', err.message);
+    }
+  }
+  return initialLiveChannels().map(safeChannel);
+}
+
+async function writeLiveChannels(list) {
+  const clean = (Array.isArray(list) ? list : []).map(safeChannel);
+  memoryLiveChannels = clean;
+  if (hasKvStorage()) {
+    await kvFetch(['set', LIVE_KV_KEY, JSON.stringify(clean)]);
+    return { mode: 'kv', persistent: true };
+  }
+  try {
+    const dir = path.dirname(LIVE_DB_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(LIVE_DB_PATH, JSON.stringify(clean, null, 2), 'utf8');
+    return { mode: 'file', persistent: true };
+  } catch (err) {
+    // Vercel serverless has read-only filesystem. Keep runtime memory so admin still works
+    // during the same warm invocation, and return a clear non-persistent warning.
+    return { mode: 'memory', persistent: false, warning: 'الاستضافة لا تسمح بالحفظ داخل الملفات. اربط Vercel KV / Upstash للحفظ الدائم.' };
+  }
+}
+
 function makeLiveId(name = '') {
   const base = String(name || '').trim().toLowerCase()
     .replace(/[^a-z0-9\u0600-\u06FF]+/gi, '-')
@@ -441,35 +523,91 @@ function makeLiveId(name = '') {
   const rnd = Math.random().toString(36).slice(2, 8);
   return (base ? `${base}-${rnd}` : `live-${rnd}`).replace(/--+/g, '-');
 }
-function safeChannel(ch) {
+function safeChannel(ch = {}) {
   return {
     id: String(ch.id || ch.slug || makeLiveId(ch.name)),
     name: String(ch.name || 'Live Channel'),
     category: String(ch.category || 'عام'),
     logo: String(ch.logo || ''),
     stream: String(ch.stream || ch.url || ''),
-    backup: Array.isArray(ch.backup) ? ch.backup.map(String).filter(Boolean) : [],
+    backup: Array.isArray(ch.backup) ? ch.backup.map(String).filter(Boolean) : String(ch.backup || '').split('\n').map(x => x.trim()).filter(Boolean),
     active: ch.active !== false,
+    order: Number.isFinite(Number(ch.order)) ? Number(ch.order) : 0,
     createdAt: ch.createdAt || new Date().toISOString(),
+    updatedAt: ch.updatedAt || '',
     views: Number(ch.views || 0)
   };
+}
+function publicChannel(ch) {
+  const c = safeChannel(ch);
+  return { ...c, watchUrl: `/?live=${encodeURIComponent(c.id)}` };
 }
 function readBody(req) {
   return new Promise((resolve, reject) => {
     let body = '';
-    req.on('data', chunk => { body += chunk; if (body.length > 2_000_000) req.destroy(); });
+    req.on('data', chunk => { body += chunk; if (body.length > 5_000_000) req.destroy(); });
     req.on('end', () => resolve(body));
     req.on('error', reject);
   });
 }
+
+function parseM3U(text) {
+  const lines = String(text || '').split(/\r?\n/);
+  const out = [];
+  let meta = {};
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (line.startsWith('#EXTINF')) {
+      const name = (line.split(',').pop() || 'Live Channel').trim();
+      const getAttr = (key) => {
+        const m = line.match(new RegExp(key + '="([^"]*)"', 'i'));
+        return m ? m[1] : '';
+      };
+      meta = {
+        name,
+        logo: getAttr('tvg-logo'),
+        category: getAttr('group-title') || 'عام'
+      };
+    } else if (!line.startsWith('#') && /^https?:\/\//i.test(line)) {
+      out.push(safeChannel({ ...meta, stream: line, id: makeLiveId(meta.name || 'live') }));
+      meta = {};
+    }
+  }
+  return out;
+}
+
+function parseCSV(text) {
+  const rows = String(text || '').split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+  if (!rows.length) return [];
+  const split = (line) => line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/).map(x => x.replace(/^"|"$/g, '').trim());
+  const header = split(rows[0]).map(x => x.toLowerCase());
+  const hasHeader = header.some(x => ['name','stream','url','logo','category','id'].includes(x));
+  const out = [];
+  for (const row of rows.slice(hasHeader ? 1 : 0)) {
+    const cols = split(row);
+    const get = (key, idx) => hasHeader ? cols[header.indexOf(key)] || '' : cols[idx] || '';
+    const name = get('name', 0) || get('title', 0);
+    const stream = get('stream', 1) || get('url', 1);
+    if (!stream) continue;
+    out.push(safeChannel({
+      id: get('id', 4) || makeLiveId(name),
+      name: name || 'Live Channel',
+      stream,
+      logo: get('logo', 2),
+      category: get('category', 3) || 'عام'
+    }));
+  }
+  return out;
+}
+
 async function liveAdminApi(req, res, q) {
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   if (req.method === 'GET') {
-    const list = readLiveChannels().map(ch => {
-      const c = safeChannel(ch);
-      return { ...c, watchUrl: `/?live=${encodeURIComponent(c.id)}` };
-    });
-    return res.end(JSON.stringify({ ok: true, count: list.length, channels: list }, null, 2));
+    const list = (await readLiveChannels())
+      .map(safeChannel)
+      .sort((a, b) => (Number(a.order || 0) - Number(b.order || 0)) || String(a.name).localeCompare(String(b.name), 'ar'));
+    return res.end(JSON.stringify({ ok: true, storage: storageMode(), persistent: storageMode() !== 'memory', count: list.length, channels: list.map(publicChannel) }, null, 2));
   }
   if (req.method !== 'POST') {
     res.statusCode = 405;
@@ -479,29 +617,62 @@ async function liveAdminApi(req, res, q) {
     const raw = await readBody(req);
     const body = raw ? JSON.parse(raw) : {};
     const action = body.action || q.action || 'save';
-    let list = readLiveChannels().map(safeChannel);
+    let list = (await readLiveChannels()).map(safeChannel);
+
     if (action === 'delete') {
       const id = String(body.id || '').trim();
       list = list.filter(x => x.id !== id);
-      writeLiveChannels(list);
-      return res.end(JSON.stringify({ ok: true, deleted: id, channels: list.length }));
+      const saved = await writeLiveChannels(list);
+      return res.end(JSON.stringify({ ok: true, deleted: id, channels: list.length, ...saved }));
     }
+
+    if (action === 'toggle') {
+      const id = String(body.id || '').trim();
+      list = list.map(x => x.id === id ? { ...x, active: body.active !== undefined ? !!body.active : !x.active, updatedAt: new Date().toISOString() } : x);
+      const saved = await writeLiveChannels(list);
+      return res.end(JSON.stringify({ ok: true, channel: publicChannel(list.find(x => x.id === id) || {}), ...saved }));
+    }
+
+    if (action === 'reorder') {
+      const ids = Array.isArray(body.ids) ? body.ids.map(String) : [];
+      const pos = new Map(ids.map((id, i) => [id, i + 1]));
+      list = list.map(x => pos.has(x.id) ? { ...x, order: pos.get(x.id), updatedAt: new Date().toISOString() } : x);
+      const saved = await writeLiveChannels(list);
+      return res.end(JSON.stringify({ ok: true, channels: list.length, ...saved }));
+    }
+
+    if (action === 'import') {
+      const format = String(body.format || '').toLowerCase();
+      const imported = (format === 'csv' ? parseCSV(body.text) : parseM3U(body.text)).map((x, i) => ({ ...x, order: list.length + i + 1 }));
+      const byId = new Map(list.map(x => [x.id, x]));
+      for (const ch of imported) {
+        let id = ch.id;
+        while (byId.has(id)) id = makeLiveId(ch.name);
+        byId.set(id, { ...ch, id });
+      }
+      list = [...byId.values()];
+      const saved = await writeLiveChannels(list);
+      return res.end(JSON.stringify({ ok: true, imported: imported.length, channels: list.length, ...saved }));
+    }
+
     const item = safeChannel(body.channel || body);
     if (!item.stream) {
       res.statusCode = 400;
       return res.end(JSON.stringify({ ok: false, error: 'stream url required' }));
     }
-    if (!item.id || list.some(x => x.id === item.id) === false && (body.autoId || !body.id)) item.id = makeLiveId(item.name);
+    if (body.autoId || !String(body.id || '').trim()) item.id = makeLiveId(item.name);
     const i = list.findIndex(x => x.id === item.id);
     if (i >= 0) list[i] = { ...list[i], ...item, updatedAt: new Date().toISOString() };
-    else list.unshift(item);
-    writeLiveChannels(list);
-    return res.end(JSON.stringify({ ok: true, channel: { ...item, watchUrl: `/?live=${encodeURIComponent(item.id)}` } }, null, 2));
+    else list.unshift({ ...item, order: item.order || 1 });
+    const saved = await writeLiveChannels(list);
+    return res.end(JSON.stringify({ ok: true, channel: publicChannel(item), ...saved }, null, 2));
   } catch (err) {
     res.statusCode = 500;
     return res.end(JSON.stringify({ ok: false, error: err.message }));
   }
 }
+
+
 
 // ── Vercel serverless handler ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
@@ -521,7 +692,7 @@ module.exports = async function handler(req, res) {
   // Live channel lookup: /api?live=bein1
   if (q.live) {
     const liveId = String(q.live || '').trim();
-    const channels = readLiveChannels().map(safeChannel);
+    const channels = (await readLiveChannels()).map(safeChannel);
     const channel = channels.find(ch => ch.id === liveId || ch.name.toLowerCase() === liveId.toLowerCase());
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     if (!channel || !channel.active) {
@@ -531,7 +702,7 @@ module.exports = async function handler(req, res) {
     try {
       channel.views = Number(channel.views || 0) + 1;
       const updated = channels.map(ch => ch.id === channel.id ? channel : ch);
-      writeLiveChannels(updated);
+      await writeLiveChannels(updated);
     } catch (_) {}
     return res.end(JSON.stringify({ ok: true, channel: { id: channel.id, name: channel.name, category: channel.category, logo: channel.logo, url: channel.stream, backup: channel.backup } }, null, 2));
   }

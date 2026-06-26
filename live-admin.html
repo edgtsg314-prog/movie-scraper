@@ -5,66 +5,138 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>إدارة البث المباشر - IPTV Expert</title>
 <style>
-*{box-sizing:border-box}body{margin:0;background:#070707;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh}body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 20% 10%,rgba(229,9,20,.22),transparent 30%),radial-gradient(circle at 80% 0,rgba(255,255,255,.08),transparent 24%),linear-gradient(180deg,#0b0b0d,#030303);z-index:-1}.wrap{width:min(1180px,94vw);margin:0 auto;padding:34px 0 60px}.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:24px}.brand{display:flex;align-items:center;gap:14px}.logo{width:50px;height:50px;border-radius:16px;background:linear-gradient(135deg,#e50914,#7a0208);display:grid;place-items:center;font-weight:900;box-shadow:0 18px 50px rgba(229,9,20,.28)}h1{margin:0;font-size:clamp(24px,3vw,38px)}.muted{color:#aaa}.grid{display:grid;grid-template-columns:420px 1fr;gap:22px}.card{background:rgba(18,18,20,.82);border:1px solid rgba(255,255,255,.08);border-radius:24px;padding:22px;box-shadow:0 24px 70px rgba(0,0,0,.35);backdrop-filter:blur(16px)}label{display:block;margin:12px 0 7px;color:#ddd;font-weight:800}.hint{font-size:12px;color:#888;margin-top:5px;line-height:1.55}input,textarea,select{width:100%;border:1px solid rgba(255,255,255,.10);background:#0b0b0d;color:#fff;border-radius:14px;padding:13px 14px;outline:none;font:inherit}textarea{min-height:82px;resize:vertical;direction:ltr;text-align:left}input:focus,textarea:focus,select:focus{border-color:#e50914;box-shadow:0 0 0 3px rgba(229,9,20,.18)}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.btns{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}.btn{border:0;border-radius:14px;padding:12px 16px;font-weight:900;color:#fff;background:#252529;cursor:pointer}.btn.primary{background:linear-gradient(135deg,#e50914,#a80610)}.btn.danger{background:#3a1114}.btn:hover{filter:brightness(1.1)}.list{display:grid;gap:12px}.channel{display:grid;grid-template-columns:58px 1fr auto;gap:14px;align-items:center;padding:14px;border-radius:18px;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.06)}.channel img{width:58px;height:58px;border-radius:14px;object-fit:cover;background:#111}.ch-name{font-weight:900;font-size:17px}.ch-meta{font-size:13px;color:#aaa;margin-top:4px;direction:ltr;text-align:right}.tag{display:inline-flex;border-radius:999px;background:rgba(229,9,20,.16);color:#ffb3b8;padding:5px 9px;font-size:12px;font-weight:900;margin-top:7px}.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.small{padding:9px 11px;border-radius:11px;font-size:13px}.empty{text-align:center;color:#888;padding:45px 12px}.copy{direction:ltr;background:#08080a;border:1px solid rgba(255,255,255,.08);padding:10px;border-radius:12px;color:#ddd;font-size:12px;word-break:break-all;margin-top:8px}@media(max-width:900px){.grid{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.channel{grid-template-columns:50px 1fr}.actions{grid-column:1 / -1;justify-content:flex-start}.row{grid-template-columns:1fr}}
+*{box-sizing:border-box}html,body{margin:0;min-height:100%;background:#060607;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}body:before{content:"";position:fixed;inset:0;background:radial-gradient(circle at 18% 0,rgba(229,9,20,.24),transparent 28%),radial-gradient(circle at 82% 8%,rgba(255,255,255,.08),transparent 24%),linear-gradient(180deg,#0d0d10,#030303);z-index:-1}.wrap{width:min(1280px,95vw);margin:auto;padding:28px 0 70px}.top{display:flex;align-items:center;justify-content:space-between;gap:18px;margin-bottom:20px}.brand{display:flex;align-items:center;gap:14px}.logo{width:54px;height:54px;border-radius:18px;background:linear-gradient(135deg,#e50914,#650006);display:grid;place-items:center;font-weight:950;box-shadow:0 16px 52px rgba(229,9,20,.28)}h1{margin:0;font-size:clamp(25px,3vw,40px)}h2{margin:0 0 14px}.muted{color:#a8a8b2}.grid{display:grid;grid-template-columns:430px 1fr;gap:20px}.card{background:rgba(18,18,22,.82);border:1px solid rgba(255,255,255,.08);border-radius:26px;padding:20px;box-shadow:0 24px 70px rgba(0,0,0,.36);backdrop-filter:blur(18px)}label{display:block;margin:12px 0 7px;color:#ddd;font-weight:850}.hint{font-size:12px;color:#90909a;margin-top:6px;line-height:1.55}input,textarea,select{width:100%;border:1px solid rgba(255,255,255,.10);background:#0b0b0e;color:#fff;border-radius:15px;padding:13px 14px;outline:none;font:inherit}textarea{min-height:82px;resize:vertical;direction:ltr;text-align:left}input:focus,textarea:focus,select:focus{border-color:#e50914;box-shadow:0 0 0 3px rgba(229,9,20,.18)}.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}.btns,.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px}.btn{border:0;border-radius:14px;padding:11px 15px;font-weight:950;color:#fff;background:#25252b;cursor:pointer;text-decoration:none}.btn.primary{background:linear-gradient(135deg,#e50914,#9b020b)}.btn.danger{background:#3a1013}.btn.warn{background:#5a3b00}.btn:hover{filter:brightness(1.12)}.small{padding:8px 10px;border-radius:11px;font-size:13px}.search{display:grid;grid-template-columns:1fr 170px;gap:10px;margin:12px 0}.list{display:grid;gap:12px}.channel{display:grid;grid-template-columns:54px 1fr auto;gap:13px;align-items:center;padding:14px;border-radius:20px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);transition:.18s}.channel.dragging{opacity:.45}.channel:hover{background:rgba(255,255,255,.075);transform:translateY(-1px)}.channel img{width:54px;height:54px;border-radius:14px;object-fit:cover;background:#111}.ch-name{font-weight:950;font-size:17px}.ch-meta{font-size:12px;color:#aaa;margin-top:4px;direction:ltr;text-align:right}.tag{display:inline-flex;border-radius:999px;background:rgba(229,9,20,.16);color:#ffb3b8;padding:5px 9px;font-size:12px;font-weight:900;margin-top:7px}.off{background:rgba(255,255,255,.09);color:#999}.actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}.empty{text-align:center;color:#888;padding:45px 12px}.copy{direction:ltr;background:#08080a;border:1px solid rgba(255,255,255,.08);padding:10px;border-radius:12px;color:#ddd;font-size:12px;word-break:break-all;margin-top:8px}.status{margin:10px 0;padding:12px 14px;border-radius:14px;background:rgba(255,193,7,.12);border:1px solid rgba(255,193,7,.24);color:#ffd985}.ok{background:rgba(0,180,90,.12);border-color:rgba(0,180,90,.24);color:#9dffc7}.tabs{display:flex;gap:8px;margin-bottom:12px}.tab{padding:9px 12px;border-radius:999px;background:#202026;cursor:pointer;font-weight:900}.tab.active{background:#e50914}.importBox{display:none}.importBox.show{display:block}@media(max-width:980px){.grid{grid-template-columns:1fr}.search{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.channel{grid-template-columns:50px 1fr}.actions{grid-column:1 / -1;justify-content:flex-start}.row{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="top">
-    <div class="brand"><div class="logo">LIVE</div><div><h1>إدارة البث المباشر</h1><div class="muted">حوّل أي رابط بث إلى رابط مختصر مثل <b>?live=abc123</b></div></div></div>
+    <div class="brand"><div class="logo">LIVE</div><div><h1>إدارة البث المباشر</h1><div class="muted">إضافة، تعديل، حذف، استيراد M3U/CSV، روابط احتياطية، وترتيب القنوات</div></div></div>
     <a class="btn" href="/" target="_blank">فتح المشغل</a>
   </div>
+
+  <div id="storageNotice"></div>
+
   <div class="grid">
     <section class="card">
-      <h2 id="formTitle">إضافة قناة</h2>
-      <input id="id" type="hidden">
-      <label>اسم القناة</label>
-      <input id="name" placeholder="beIN Sports 1">
-      <div class="row">
-        <div><label>التصنيف</label><input id="category" placeholder="رياضة"></div>
-        <div><label>الحالة</label><select id="active"><option value="true">مفعلة</option><option value="false">موقوفة</option></select></div>
+      <div class="tabs">
+        <div class="tab active" id="tabAdd" onclick="setMode('add')">إضافة قناة</div>
+        <div class="tab" id="tabImport" onclick="setMode('import')">استيراد جماعي</div>
       </div>
-      <label>شعار القناة</label>
-      <input id="logo" placeholder="https://...jpg أو png">
-      <label>رابط البث الحقيقي</label>
-      <textarea id="stream" placeholder="https://example.com/live/channel.m3u8"></textarea>
-      <div class="hint">الرابط الحقيقي لا يظهر للمستخدم. المستخدم يحصل على رابط مثل: <b>/?live=xxxxxx</b></div>
-      <label>روابط احتياطية اختيارية</label>
-      <textarea id="backup" placeholder="ضع كل رابط في سطر مستقل"></textarea>
-      <div class="btns">
-        <button class="btn primary" onclick="saveChannel()">حفظ وإنشاء الرابط</button>
-        <button class="btn" onclick="resetForm()">تفريغ</button>
+
+      <div id="singleBox">
+        <h2 id="formTitle">إضافة قناة</h2>
+        <input id="id" type="hidden">
+        <label>اسم القناة</label>
+        <input id="name" placeholder="beIN Sports 1">
+        <div class="row">
+          <div><label>التصنيف</label><input id="category" placeholder="رياضة"></div>
+          <div><label>الحالة</label><select id="active"><option value="true">مفعلة</option><option value="false">موقوفة</option></select></div>
+        </div>
+        <label>شعار القناة</label>
+        <input id="logo" placeholder="https://...jpg أو png">
+        <label>رابط البث الحقيقي</label>
+        <textarea id="stream" placeholder="https://example.com/live/channel.m3u8 أو https://dlhd.pk/stream/stream-966.php"></textarea>
+        <div class="hint">الرابط الحقيقي لا يظهر للمستخدم. المستخدم يحصل على رابط مثل: <b>/?live=xxxxxx</b></div>
+        <label>روابط احتياطية اختيارية</label>
+        <textarea id="backup" placeholder="ضع كل رابط احتياطي في سطر مستقل"></textarea>
+        <div class="btns">
+          <button class="btn primary" onclick="saveChannel()">حفظ وإنشاء الرابط</button>
+          <button class="btn" onclick="testCurrent()">اختبار الرابط</button>
+          <button class="btn" onclick="resetForm()">تفريغ</button>
+        </div>
+        <div id="result"></div>
       </div>
-      <div id="result"></div>
+
+      <div id="importBox" class="importBox">
+        <h2>استيراد M3U / CSV</h2>
+        <label>نوع الملف</label>
+        <select id="importFormat"><option value="m3u">M3U</option><option value="csv">CSV</option></select>
+        <label>الصق المحتوى هنا</label>
+        <textarea id="importText" style="min-height:220px" placeholder="#EXTM3U&#10;#EXTINF:-1 tvg-logo=&quot;...&quot; group-title=&quot;Sports&quot;,beIN 1&#10;https://example.com/live.m3u8"></textarea>
+        <div class="hint">CSV: name,stream,logo,category,id</div>
+        <div class="btns">
+          <button class="btn primary" onclick="importChannels()">استيراد القنوات</button>
+          <button class="btn" onclick="$('importText').value=''">تفريغ</button>
+        </div>
+        <div id="importResult"></div>
+      </div>
     </section>
+
     <section class="card">
       <h2>القنوات</h2>
+      <div class="search">
+        <input id="search" placeholder="بحث باسم القناة أو التصنيف..." oninput="render()">
+        <select id="catFilter" onchange="render()"><option value="">كل التصنيفات</option></select>
+      </div>
+      <div class="toolbar">
+        <button class="btn small" onclick="load()">تحديث</button>
+        <button class="btn small" onclick="saveOrder()">حفظ الترتيب</button>
+      </div>
       <div class="muted" id="count">جاري التحميل...</div>
       <div class="list" id="list"></div>
     </section>
   </div>
 </div>
+
 <script>
 const $=id=>document.getElementById(id);
 let channels=[];
+let draggedId=null;
 function watchUrl(id){return location.origin+'/?live='+encodeURIComponent(id)}
+function setMode(mode){
+  $('tabAdd').classList.toggle('active',mode==='add');
+  $('tabImport').classList.toggle('active',mode==='import');
+  $('singleBox').style.display=mode==='add'?'block':'none';
+  $('importBox').classList.toggle('show',mode==='import');
+}
 async function load(){
   const r=await fetch('/api?live_list=1',{cache:'no-store'});
   const d=await r.json();
   channels=d.channels||[];
   $('count').textContent='العدد: '+channels.length;
+  renderStorage(d);
+  renderCats();
   render();
+}
+function renderStorage(d){
+  const box=$('storageNotice');
+  if(d.persistent===false){
+    box.innerHTML='<div class="status">تنبيه: الحفظ الآن مؤقت لأن الاستضافة لا تسمح بالكتابة داخل الملفات. للحفظ الدائم على Vercel اربط KV_REST_API_URL و KV_REST_API_TOKEN أو UPSTASH_REDIS_REST_URL و UPSTASH_REDIS_REST_TOKEN.</div>';
+  } else {
+    box.innerHTML='<div class="status ok">التخزين الدائم يعمل: '+(d.storage||'file')+'</div>';
+  }
+}
+function renderCats(){
+  const sel=$('catFilter'), cur=sel.value;
+  const cats=[...new Set(channels.map(c=>c.category||'عام'))].sort();
+  sel.innerHTML='<option value="">كل التصنيفات</option>'+cats.map(c=>`<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+  sel.value=cur;
+}
+function filtered(){
+  const q=($('search').value||'').trim().toLowerCase();
+  const cat=$('catFilter').value;
+  return channels.filter(ch=>{
+    const okCat=!cat||(ch.category||'عام')===cat;
+    const hay=(ch.name+' '+ch.category+' '+ch.id).toLowerCase();
+    return okCat && (!q||hay.includes(q));
+  });
 }
 function render(){
   const box=$('list'); box.innerHTML='';
-  if(!channels.length){box.innerHTML='<div class="empty">لا توجد قنوات بعد</div>';return;}
-  for(const ch of channels){
-    const el=document.createElement('div'); el.className='channel';
+  const arr=filtered();
+  if(!arr.length){box.innerHTML='<div class="empty">لا توجد قنوات</div>';return;}
+  for(const ch of arr){
+    const el=document.createElement('div'); el.className='channel'; el.draggable=true; el.dataset.id=ch.id;
+    el.ondragstart=()=>{draggedId=ch.id;el.classList.add('dragging')};
+    el.ondragend=()=>{draggedId=null;el.classList.remove('dragging')};
+    el.ondragover=(e)=>e.preventDefault();
+    el.ondrop=()=>moveBefore(draggedId,ch.id);
     el.innerHTML=`
-      <img src="${ch.logo||''}" onerror="this.style.opacity=.25">
+      <img src="${escapeAttr(ch.logo||'')}" onerror="this.style.opacity=.25">
       <div>
-        <div class="ch-name">${escapeHtml(ch.name)}</div>
-        <div class="ch-meta">ID: ${escapeHtml(ch.id)} · Views: ${ch.views||0}</div>
+        <div class="ch-name">${escapeHtml(ch.name)} ${ch.active===false?'<span class="tag off">موقوفة</span>':''}</div>
+        <div class="ch-meta">ID: ${escapeHtml(ch.id)} · Views: ${ch.views||0} · Backups: ${(ch.backup||[]).length}</div>
         <span class="tag">${escapeHtml(ch.category||'عام')}</span>
         <div class="copy">${watchUrl(ch.id)}</div>
       </div>
@@ -72,35 +144,52 @@ function render(){
         <button class="btn small" onclick="copyText('${watchUrl(ch.id)}')">نسخ</button>
         <button class="btn small" onclick="window.open('${watchUrl(ch.id)}','_blank')">تجربة</button>
         <button class="btn small" onclick='editChannel(${JSON.stringify(ch).replace(/'/g,"&#39;")})'>تعديل</button>
+        <button class="btn warn small" onclick="toggleChannel('${ch.id}',${ch.active!==false?'false':'true'})">${ch.active!==false?'إيقاف':'تفعيل'}</button>
         <button class="btn danger small" onclick="deleteChannel('${ch.id}')">حذف</button>
       </div>`;
     box.appendChild(el);
   }
 }
+function moveBefore(from,to){
+  if(!from||from===to)return;
+  const a=channels.findIndex(x=>x.id===from), b=channels.findIndex(x=>x.id===to);
+  if(a<0||b<0)return;
+  const [it]=channels.splice(a,1);
+  const nb=channels.findIndex(x=>x.id===to);
+  channels.splice(nb,0,it);
+  render();
+}
 function escapeHtml(s){return String(s||'').replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]))}
+function escapeAttr(s){return escapeHtml(s).replace(/`/g,'')}
 function editChannel(ch){
+  setMode('add');
   $('formTitle').textContent='تعديل قناة'; $('id').value=ch.id; $('name').value=ch.name||''; $('category').value=ch.category||''; $('logo').value=ch.logo||''; $('stream').value=ch.stream||''; $('active').value=String(ch.active!==false); $('backup').value=(ch.backup||[]).join('\n'); window.scrollTo({top:0,behavior:'smooth'});
 }
 function resetForm(){['id','name','category','logo','stream','backup'].forEach(x=>$(x).value=''); $('active').value='true'; $('formTitle').textContent='إضافة قناة'; $('result').innerHTML='';}
 async function saveChannel(){
-  const body={
-    id:$('id').value.trim(),
-    name:$('name').value.trim(),
-    category:$('category').value.trim(),
-    logo:$('logo').value.trim(),
-    stream:$('stream').value.trim(),
-    active:$('active').value==='true',
-    backup:$('backup').value.split('\n').map(x=>x.trim()).filter(Boolean),
-    autoId:!$('id').value.trim()
-  };
+  const body={id:$('id').value.trim(),name:$('name').value.trim(),category:$('category').value.trim(),logo:$('logo').value.trim(),stream:$('stream').value.trim(),active:$('active').value==='true',backup:$('backup').value.split('\n').map(x=>x.trim()).filter(Boolean),autoId:!$('id').value.trim()};
   if(!body.name||!body.stream){alert('اكتب اسم القناة ورابط البث');return;}
   const r=await fetch('/api?live_admin=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
   const d=await r.json();
   if(!d.ok){alert(d.error||'فشل الحفظ');return;}
-  $('result').innerHTML='<div class="copy">'+watchUrl(d.channel.id)+'</div>';
+  $('result').innerHTML='<div class="copy">'+watchUrl(d.channel.id)+'</div>'+(d.warning?'<div class="status">'+escapeHtml(d.warning)+'</div>':'');
   await load();
 }
 async function deleteChannel(id){if(!confirm('حذف القناة؟'))return;await fetch('/api?live_admin=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'delete',id})});await load();}
+async function toggleChannel(id,active){await fetch('/api?live_admin=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'toggle',id,active:active==='true'})});await load();}
+async function saveOrder(){const ids=channels.map(x=>x.id);const r=await fetch('/api?live_admin=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'reorder',ids})});const d=await r.json();alert(d.ok?'تم حفظ الترتيب':(d.error||'فشل'))}
+async function importChannels(){
+  const text=$('importText').value.trim(); if(!text){alert('الصق محتوى M3U أو CSV');return;}
+  const r=await fetch('/api?live_admin=1',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'import',format:$('importFormat').value,text})});
+  const d=await r.json();
+  if(!d.ok){alert(d.error||'فشل الاستيراد');return;}
+  $('importResult').innerHTML='<div class="status ok">تم استيراد '+d.imported+' قناة. الإجمالي: '+d.channels+'</div>'+(d.warning?'<div class="status">'+escapeHtml(d.warning)+'</div>':'');
+  await load();
+}
+function testCurrent(){
+  const url=$('stream').value.trim(); if(!url)return alert('ضع الرابط أولاً');
+  window.open(url,'_blank');
+}
 async function copyText(t){await navigator.clipboard.writeText(t);alert('تم النسخ');}
 load().catch(e=>{$('count').textContent='فشل التحميل: '+e.message});
 </script>

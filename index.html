@@ -51,6 +51,11 @@ html,body,#app,*{-webkit-user-select:none!important;user-select:none!important;-
 @media(max-width:760px){.episode-nav{bottom:calc(90px + var(--safe-bottom,0px));gap:8px}.episode-btn{height:38px;padding:0 12px;font-size:12px}}
 @media(max-height:520px) and (orientation:landscape){.episode-nav{bottom:calc(82px + var(--safe-bottom,0px))}.episode-btn{height:36px;padding:0 12px;font-size:12px}}
 
+
+/* iPhone/Safari subtitle support: native fullscreen uses <track>, not HTML overlay */
+video::-webkit-media-text-track-display{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important}
+video::cue{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-weight:800!important;background:rgba(0,0,0,.68)!important;color:#fff!important;text-shadow:0 2px 8px #000!important}
+
 </style>
 </head>
 <body>
@@ -90,6 +95,8 @@ const settings=document.getElementById('settings'),menu=document.getElementById(
 const settingsTop=document.getElementById('settingsTop'),ccTop=document.getElementById('ccTop'),pipTop=document.getElementById('pipTop'),fitTop=document.getElementById('fitTop'),episodeNav=document.getElementById('episodeNav'),prevEp=document.getElementById('prevEp'),nextEp=document.getElementById('nextEp');
 let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null,arabicCues=[],arabicEnabled=false,subtitleOptions=[],selectedSubtitleChoice=0,subtitleOffset=0,currentSubtitleLabel='العربية';
 const subtitleOverlay=document.getElementById('subtitleOverlay');
+const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1);
+const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 const isLive=!!live; const isTv=!!s&&!isLive; const storageKey='iptv-progress-'+(isLive?'live-'+live:(isTv?'tv-'+id+'-'+s+'-'+e:'movie-'+id)); selectedSubtitleChoice=Number(localStorage.getItem(storageKey+'-sub-choice')||0); subtitleOffset=Number(localStorage.getItem(storageKey+'-sub-offset')||0);
 function buildWatchUrl(nextS,nextE){
   const qs=new URLSearchParams({id:String(id)});
@@ -143,7 +150,13 @@ function updateSubtitleOverlay(){
 }
 function enableArabicSubtitle(on=true){
   arabicEnabled=!!on;
-  try{for(const t of v.textTracks)t.mode='disabled'}catch(_){ }
+  try{
+    for(const t of v.textTracks){
+      // iPhone native fullscreen does not show our HTML subtitle overlay.
+      // Keep the real WebVTT track showing on iOS/Safari, and use the HTML overlay elsewhere.
+      t.mode = (arabicEnabled && isIOS) ? 'showing' : 'disabled';
+    }
+  }catch(_){ }
   ccBtn.classList.toggle('active',arabicEnabled); if(ccTop)ccTop.classList.toggle('active',arabicEnabled);
   updateSubtitleOverlay();
 }
@@ -197,6 +210,7 @@ async function fetchArabicSubtitle(choice=selectedSubtitleChoice){
     track.default=true;
     v.appendChild(track);
     arabicTrack=track;
+    try{ if(isIOS && v.textTracks && v.textTracks.length){ v.textTracks[v.textTracks.length-1].mode='showing'; } }catch(_){ }
 
     const enableArabic=()=>{ enableArabicSubtitle(true); };
     track.addEventListener('load',enableArabic,{once:true});
@@ -263,10 +277,10 @@ async function enterFullScreen(){
     if(document.fullscreenElement) return document.exitFullscreen();
     const target=document.getElementById('app')||document.documentElement;
     if(target.requestFullscreen) return await target.requestFullscreen();
-    if(v.webkitEnterFullscreen) return v.webkitEnterFullscreen();
+    if(v.webkitEnterFullscreen){ try{enableArabicSubtitle(arabicEnabled||!!arabicCues.length)}catch(_){} return v.webkitEnterFullscreen(); }
     if(v.webkitRequestFullscreen) return v.webkitRequestFullscreen();
   }catch(err){
-    try{ if(v.webkitEnterFullscreen) v.webkitEnterFullscreen(); }catch(_){}
+    try{ if(v.webkitEnterFullscreen){ try{enableArabicSubtitle(arabicEnabled||!!arabicCues.length)}catch(_){} v.webkitEnterFullscreen(); } }catch(_){}
   }
 }
 full.onclick=enterFullScreen;pip.onclick=()=>document.pictureInPictureElement?document.exitPictureInPicture():v.requestPictureInPicture&&v.requestPictureInPicture();
