@@ -47,40 +47,7 @@ function bootWasm() {
 }
 
 // ── Stream URL resolver ───────────────────────────────────────────────────────
-function firstString(...values) {
-  for (const v of values) {
-    if (typeof v === 'string' && v.trim()) return v.trim();
-  }
-  return '';
-}
-
-function pickStreamUrl(data) {
-  const sources = Array.isArray(data?.sources) ? data.sources :
-    Array.isArray(data?.stream?.sources) ? data.stream.sources :
-    Array.isArray(data?.data?.sources) ? data.data.sources :
-    Array.isArray(data?.data?.stream?.sources) ? data.data.stream.sources : [];
-  const firstSource = sources.find(x => x && (x.file || x.url || x.src || x.playlist));
-  return firstString(
-    data?.stream?.playlist,
-    data?.stream?.url,
-    data?.stream?.file,
-    data?.stream?.src,
-    data?.playlist,
-    data?.url,
-    data?.file,
-    data?.src,
-    data?.data?.stream?.playlist,
-    data?.data?.stream?.url,
-    data?.data?.playlist,
-    data?.data?.url,
-    firstSource?.playlist,
-    firstSource?.file,
-    firstSource?.url,
-    firstSource?.src
-  );
-}
-
-async function getStream(id, season, episode, debug = false) {
+async function getStream(id, season, episode) {
   await bootWasm();
   const token = globalThis.getAdv(String(id));
   if (!token) throw new Error('getAdv returned null');
@@ -90,38 +57,99 @@ async function getStream(id, season, episode, debug = false) {
     : `https://vidlink.pro/api/b/movie/${token}?multiLang=0`;
 
   const res = await fetch(apiUrl, {
-    headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: 'application/json,text/plain,*/*' }
+    headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA }
   });
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (_) {}
+  if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
+  const data = await res.json();
+  const playable = extractPlayableSource(data);
+  if (!playable) {
+    const body = JSON.stringify(data).slice(0, 700);
+    throw new Error(`No playable source in response. keys=[${Object.keys(data || {}).join(', ')}] body=${body}`);
+  }
+  return playable;
+}
 
-  if (debug) {
-    return { apiUrl, status: res.status, ok: res.ok, tokenPreview: String(token).slice(0, 12) + '...', data, raw: text.slice(0, 1200) };
+function extractPlayableSource(data) {
+  const stream = data?.stream || data?.data?.stream || data?.result?.stream || data;
+
+  // Old VidLink format: { stream: { playlist: 'https://...m3u8' } }
+  const directCandidates = [
+    stream?.playlist,
+    data?.playlist,
+    stream?.url,
+    data?.url,
+    stream?.file,
+    data?.file,
+    stream?.src,
+    data?.src,
+    stream?.source,
+    data?.source,
+    data?.link
+  ].filter(Boolean);
+
+  for (const x of directCandidates) {
+    if (typeof x === 'string' && /^https?:\/\//i.test(x)) return x;
   }
 
-  if (!res.ok) {
-    throw new Error(`vidlink API returned ${res.status}: ${text.slice(0, 180)}`);
+  // New VidLink format: { stream: { qualities: { "360": { url: "...mp4" } } } }
+  const qualities = stream?.qualities || data?.qualities || data?.sources?.qualities;
+  const qualityUrl = pickBestQualityUrl(qualities);
+  if (qualityUrl) return qualityUrl;
+
+  // Common formats: { sources: [{file/url/src: ...}] } or { stream: { sources: [...] } }
+  const sourceLists = [stream?.sources, data?.sources, stream?.files, data?.files].filter(Array.isArray);
+  for (const list of sourceLists) {
+    const best = pickBestFromSources(list);
+    if (best) return best;
   }
 
-  const playlist = pickStreamUrl(data);
-  if (!playlist) {
-    const keys = data && typeof data === 'object' ? Object.keys(data).join(', ') : 'no-json';
-    throw new Error(`No playlist in response. keys=[${keys}] body=${text.slice(0, 260)}`);
+  // Embed/iframe fallback
+  const embedCandidates = [stream?.iframe, data?.iframe, stream?.embed, data?.embed, stream?.embedUrl, data?.embedUrl].filter(Boolean);
+  for (const x of embedCandidates) {
+    if (typeof x === 'string' && /^https?:\/\//i.test(x)) return x;
   }
-  return playlist;
+
+  return null;
+}
+
+function pickBestQualityUrl(qualities) {
+  if (!qualities || typeof qualities !== 'object') return null;
+  const order = ['2160','1440','1080','720','480','360','auto','default'];
+  for (const q of order) {
+    const item = qualities[q] || qualities[String(q)] || qualities[q + 'p'];
+    const url = typeof item === 'string' ? item : item?.url || item?.file || item?.src;
+    if (url && /^https?:\/\//i.test(url)) return url;
+  }
+  const values = Object.entries(qualities)
+    .map(([quality, item]) => ({ quality: Number(String(quality).replace(/\D/g, '')) || 0, item }))
+    .sort((a, b) => b.quality - a.quality);
+  for (const { item } of values) {
+    const url = typeof item === 'string' ? item : item?.url || item?.file || item?.src;
+    if (url && /^https?:\/\//i.test(url)) return url;
+  }
+  return null;
+}
+
+function pickBestFromSources(list) {
+  const normalized = list.map(x => {
+    const url = typeof x === 'string' ? x : x?.url || x?.file || x?.src || x?.link;
+    const q = typeof x === 'object' ? Number(String(x.quality || x.label || x.height || '').replace(/\D/g, '')) || 0 : 0;
+    return { url, q };
+  }).filter(x => x.url && /^https?:\/\//i.test(x.url));
+  normalized.sort((a, b) => b.q - a.q);
+  return normalized[0]?.url || null;
 }
 
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
-function fetchUpstream(url, redirects = 0) {
+function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error('too many redirects'));
     (url.startsWith('https') ? https : http).get(url, {
-      headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*' }
+      headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*', ...extraHeaders }
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const loc = res.headers.location;
-        return resolve(fetchUpstream(loc.startsWith('http') ? loc : new URL(loc, url).href, redirects + 1));
+        return resolve(fetchUpstream(loc.startsWith('http') ? loc : new URL(loc, url).href, redirects + 1, extraHeaders));
       }
       resolve(res);
     }).on('error', reject);
@@ -753,20 +781,6 @@ module.exports = async function handler(req, res) {
     return res.end(JSON.stringify({ ok: true, channel: { id: channel.id, name: channel.name, category: channel.category, logo: channel.logo, url: channel.stream, backup: channel.backup } }, null, 2));
   }
 
-  // Debug stream resolver: /api?stream_debug=1&id=278 OR /api?stream_debug=1&id=94997&s=1&e=1
-  if (q.stream_debug) {
-    try {
-      const result = await getStream(q.id, q.s, q.e, true);
-      res.statusCode = 200;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      return res.end(JSON.stringify({ ok: true, result }, null, 2));
-    } catch (err) {
-      res.statusCode = 500;
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      return res.end(JSON.stringify({ ok: false, error: err.message }, null, 2));
-    }
-  }
-
   // Debug identifier resolution: /api?subtitle_debug=1&id=238
   if (q.subtitle_debug) {
     try {
@@ -828,7 +842,7 @@ module.exports = async function handler(req, res) {
   if (q.url) {
     const url = decodeURIComponent(q.url);
     try {
-      const upstream = await fetchUpstream(url);
+      const upstream = await fetchUpstream(url, 0, req.headers.range ? { Range: req.headers.range } : {});
       const ct = (upstream.headers['content-type'] || '').toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
 
@@ -841,6 +855,9 @@ module.exports = async function handler(req, res) {
       } else {
         res.setHeader('Content-Type', ct || 'application/octet-stream');
         if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);
+        if (upstream.headers['accept-ranges']) res.setHeader('Accept-Ranges', upstream.headers['accept-ranges']);
+        if (upstream.headers['content-range']) res.setHeader('Content-Range', upstream.headers['content-range']);
+        if (upstream.headers['cache-control']) res.setHeader('Cache-Control', upstream.headers['cache-control']);
         res.statusCode = upstream.statusCode;
         upstream.pipe(res);
       }

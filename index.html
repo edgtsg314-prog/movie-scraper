@@ -255,8 +255,27 @@ function playEmbed(url){
 }
 function playStream(raw, backups=[]){
   embedFrame.style.display='none'; embedFrame.removeAttribute('src'); v.style.display='block';
+  if(hls){hls.destroy();hls=null}
   const src='/api?url='+encodeURIComponent(raw);
-  if(Hls.isSupported()){hls=new Hls({enableWorker:true,lowLatencyMode:false});hls.loadSource(src);hls.attachMedia(v);hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];loader.style.display='none';restoreProgress();v.play().catch(()=>{});renderQualityMenu()});hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal){const next=backups.shift(); if(next) return playSource(next,backups); showErr(data.details||'HLS error')}})}else if(v.canPlayType('application/vnd.apple.mpegurl')){v.src=src;v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true})}else showErr('المتصفح لا يدعم HLS')}
+  const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(String(raw||''));
+  if(isDirectVideo){
+    levels=[]; renderQualityMenu();
+    v.src=src;
+    v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('error',()=>{const next=backups.shift(); if(next) return playSource(next,backups); showErr('تعذر تشغيل ملف الفيديو المباشر')},{once:true});
+    return;
+  }
+  if(Hls.isSupported()){
+    hls=new Hls({enableWorker:true,lowLatencyMode:false});
+    hls.loadSource(src); hls.attachMedia(v);
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];loader.style.display='none';restoreProgress();v.play().catch(()=>{});renderQualityMenu()});
+    hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal){const next=backups.shift(); if(next) return playSource(next,backups); showErr(data.details||'HLS error')}})
+  }else if(v.canPlayType('application/vnd.apple.mpegurl')){
+    v.src=src;
+    v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('error',()=>{const next=backups.shift(); if(next) return playSource(next,backups); showErr('تعذر تشغيل HLS')},{once:true});
+  }else showErr('المتصفح لا يدعم HLS')
+}
 
 function restoreProgress(){let t=Number(localStorage.getItem(storageKey)||0);if(t>20&&isFinite(t))v.currentTime=t}
 setInterval(()=>{if(v.currentTime>5)localStorage.setItem(storageKey,String(v.currentTime))},2500);
