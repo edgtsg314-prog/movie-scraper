@@ -47,7 +47,40 @@ function bootWasm() {
 }
 
 // ── Stream URL resolver ───────────────────────────────────────────────────────
-async function getStream(id, season, episode) {
+function firstString(...values) {
+  for (const v of values) {
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return '';
+}
+
+function pickStreamUrl(data) {
+  const sources = Array.isArray(data?.sources) ? data.sources :
+    Array.isArray(data?.stream?.sources) ? data.stream.sources :
+    Array.isArray(data?.data?.sources) ? data.data.sources :
+    Array.isArray(data?.data?.stream?.sources) ? data.data.stream.sources : [];
+  const firstSource = sources.find(x => x && (x.file || x.url || x.src || x.playlist));
+  return firstString(
+    data?.stream?.playlist,
+    data?.stream?.url,
+    data?.stream?.file,
+    data?.stream?.src,
+    data?.playlist,
+    data?.url,
+    data?.file,
+    data?.src,
+    data?.data?.stream?.playlist,
+    data?.data?.stream?.url,
+    data?.data?.playlist,
+    data?.data?.url,
+    firstSource?.playlist,
+    firstSource?.file,
+    firstSource?.url,
+    firstSource?.src
+  );
+}
+
+async function getStream(id, season, episode, debug = false) {
   await bootWasm();
   const token = globalThis.getAdv(String(id));
   if (!token) throw new Error('getAdv returned null');
@@ -57,12 +90,25 @@ async function getStream(id, season, episode) {
     : `https://vidlink.pro/api/b/movie/${token}?multiLang=0`;
 
   const res = await fetch(apiUrl, {
-    headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA }
+    headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: 'application/json,text/plain,*/*' }
   });
-  if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
-  const data = await res.json();
-  const playlist = data?.stream?.playlist;
-  if (!playlist) throw new Error('No playlist in response');
+  const text = await res.text();
+  let data = null;
+  try { data = text ? JSON.parse(text) : null; } catch (_) {}
+
+  if (debug) {
+    return { apiUrl, status: res.status, ok: res.ok, tokenPreview: String(token).slice(0, 12) + '...', data, raw: text.slice(0, 1200) };
+  }
+
+  if (!res.ok) {
+    throw new Error(`vidlink API returned ${res.status}: ${text.slice(0, 180)}`);
+  }
+
+  const playlist = pickStreamUrl(data);
+  if (!playlist) {
+    const keys = data && typeof data === 'object' ? Object.keys(data).join(', ') : 'no-json';
+    throw new Error(`No playlist in response. keys=[${keys}] body=${text.slice(0, 260)}`);
+  }
   return playlist;
 }
 
@@ -705,6 +751,20 @@ module.exports = async function handler(req, res) {
       await writeLiveChannels(updated);
     } catch (_) {}
     return res.end(JSON.stringify({ ok: true, channel: { id: channel.id, name: channel.name, category: channel.category, logo: channel.logo, url: channel.stream, backup: channel.backup } }, null, 2));
+  }
+
+  // Debug stream resolver: /api?stream_debug=1&id=278 OR /api?stream_debug=1&id=94997&s=1&e=1
+  if (q.stream_debug) {
+    try {
+      const result = await getStream(q.id, q.s, q.e, true);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: true, result }, null, 2));
+    } catch (err) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: err.message }, null, 2));
+    }
   }
 
   // Debug identifier resolution: /api?subtitle_debug=1&id=238
