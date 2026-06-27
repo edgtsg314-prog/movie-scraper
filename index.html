@@ -6,7 +6,7 @@
 <title>IPTV Expert Player</title>
 <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
 <style>
-*{box-sizing:border-box;margin:0;padding:0}html,body{width:100%;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}#app{position:fixed;inset:0;background:#000}#backdrop{position:fixed;inset:0;background:#111 center/cover no-repeat;opacity:.35;filter:blur(3px) saturate(1.1);transform:scale(1.03);transition:.4s}#shade{position:fixed;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.78),rgba(0,0,0,.08) 26%,rgba(0,0,0,.1) 62%,rgba(0,0,0,.86));pointer-events:none}.topbar{position:fixed;z-index:20;top:0;left:0;right:0;height:96px;display:flex;align-items:flex-start;justify-content:center;padding:22px 86px;background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,0));transition:.25s}.title{text-align:center;text-shadow:0 2px 16px #000}.title h1{font-size:clamp(22px,3vw,34px);font-weight:900;line-height:1.1}.title p{margin-top:8px;color:#ddd;font-weight:700;font-size:14px}.back{position:fixed;z-index:30;top:24px;left:24px;width:52px;height:52px;border-radius:50%;background:rgba(15,15,15,.72);border:1px solid rgba(255,255,255,.14);display:grid;place-items:center;font-size:24px;backdrop-filter:blur(14px)}#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}video,#embedFrame{width:100%;height:100%;object-fit:contain;background:#000;border:0}#embedFrame{position:absolute;inset:0}video::cue{font-size:160%;line-height:1.25;color:#fff;background:rgba(0,0,0,.62);text-shadow:0 2px 6px #000}.loader{position:fixed;z-index:40;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;background:rgba(0,0,0,.6)}.spin{width:64px;height:64px;border-radius:50%;border:5px solid rgba(255,255,255,.15);border-top-color:#e50914;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.loader small{color:#bbb}.center-controls{position:fixed;z-index:22;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:26px;transition:.2s}.bigplay{width:92px;height:92px;border-radius:50%;background:#e50914;box-shadow:0 12px 50px rgba(229,9,20,.45);display:grid;place-items:center;font-size:34px}.skip{width:64px;height:64px;border-radius:50%;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.12);display:grid;place-items:center;font-weight:900}.controls{position:fixed;z-index:24;left:0;right:0;bottom:0;padding:0 28px 26px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.92));transition:.25s}.progress-wrap{height:24px;display:flex;align-items:center}.progress{position:relative;width:100%;height:5px;border-radius:999px;background:rgba(255,255,255,.34);cursor:pointer}.buffer{position:absolute;inset:0 auto 0 0;width:0;background:rgba(255,255,255,.45);border-radius:999px}.bar{position:absolute;inset:0 auto 0 0;width:0;background:#e50914;border-radius:999px}.knob{position:absolute;top:50%;left:0;width:18px;height:18px;border-radius:50%;background:#e50914;transform:translate(-50%,-50%);box-shadow:0 0 18px rgba(229,9,20,.8)}.row{height:54px;display:flex;align-items:center;justify-content:space-between;gap:18px}.left,.right{display:flex;align-items:center;gap:13px}.ctrl{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);font-size:20px}.ctrl:hover{background:rgba(255,255,255,.16)}.time{direction:ltr;color:#eee;font-weight:800;min-width:128px;text-align:left}.vol{direction:ltr;width:118px;accent-color:#e50914}.pill{border-radius:999px;padding:8px 12px;background:rgba(255,255,255,.12);font-size:13px;font-weight:900}.cc.active{background:#e50914}.menu{position:fixed;z-index:50;right:22px;bottom:92px;width:min(330px,calc(100vw - 44px));background:rgba(12,12,12,.96);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:14px;box-shadow:0 22px 70px rgba(0,0,0,.6);display:none;backdrop-filter:blur(18px)}.menu.show{display:block}.menu h3{font-size:15px;margin:4px 4px 12px;color:#fff;text-align:right}.item span{white-space:normal;overflow:hidden;text-overflow:ellipsis}.item b{white-space:nowrap}.item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border-radius:12px;color:#ddd}.item:hover,.item.active{background:rgba(229,9,20,.18);color:#fff}.err{position:fixed;z-index:60;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#050505;text-align:center;padding:28px}.err h2{font-size:28px}.err pre{max-width:900px;white-space:pre-wrap;color:#bbb;direction:ltr;text-align:left;background:#111;border:1px solid #333;padding:14px;border-radius:12px}.hidden-ui .controls,.hidden-ui .topbar,.hidden-ui .back,.hidden-ui .center-controls{opacity:0;pointer-events:none}@media(max-width:700px){.topbar{height:80px;padding:18px 70px}.back{top:18px;left:16px;width:46px;height:46px}.controls{padding:0 14px 18px}.row{height:48px}.ctrl{width:40px;height:40px}.bigplay{width:76px;height:76px}.skip{width:54px;height:54px}.vol{display:none}.time{font-size:12px;min-width:94px}.title h1{font-size:22px}}
+*{box-sizing:border-box;margin:0;padding:0}html,body{width:100%;height:100%;background:#000;color:#fff;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;overflow:hidden}button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}#app{position:fixed;inset:0;background:#000}#backdrop{position:fixed;inset:0;background:#111 center/cover no-repeat;opacity:.35;filter:blur(3px) saturate(1.1);transform:scale(1.03);transition:.4s}#shade{position:fixed;inset:0;background:linear-gradient(180deg,rgba(0,0,0,.78),rgba(0,0,0,.08) 26%,rgba(0,0,0,.1) 62%,rgba(0,0,0,.86));pointer-events:none}.topbar{position:fixed;z-index:20;top:0;left:0;right:0;height:96px;display:flex;align-items:flex-start;justify-content:center;padding:22px 86px;background:linear-gradient(180deg,rgba(0,0,0,.82),rgba(0,0,0,0));transition:.25s}.title{text-align:center;text-shadow:0 2px 16px #000}.title h1{font-size:clamp(22px,3vw,34px);font-weight:900;line-height:1.1}.title p{margin-top:8px;color:#ddd;font-weight:700;font-size:14px}.back{position:fixed;z-index:30;top:24px;left:24px;width:52px;height:52px;border-radius:50%;background:rgba(15,15,15,.72);border:1px solid rgba(255,255,255,.14);display:grid;place-items:center;font-size:24px;backdrop-filter:blur(14px)}#stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}video{width:100%;height:100%;object-fit:contain;background:#000;border:0}video::cue{font-size:160%;line-height:1.25;color:#fff;background:rgba(0,0,0,.62);text-shadow:0 2px 6px #000}.loader{position:fixed;z-index:40;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:18px;background:rgba(0,0,0,.6)}.spin{width:64px;height:64px;border-radius:50%;border:5px solid rgba(255,255,255,.15);border-top-color:#e50914;animation:spin .8s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.loader small{color:#bbb}.center-controls{position:fixed;z-index:22;left:50%;top:50%;transform:translate(-50%,-50%);display:flex;align-items:center;gap:26px;transition:.2s}.bigplay{width:92px;height:92px;border-radius:50%;background:#e50914;box-shadow:0 12px 50px rgba(229,9,20,.45);display:grid;place-items:center;font-size:34px}.skip{width:64px;height:64px;border-radius:50%;background:rgba(0,0,0,.62);border:1px solid rgba(255,255,255,.12);display:grid;place-items:center;font-weight:900}.controls{position:fixed;z-index:24;left:0;right:0;bottom:0;padding:0 28px 26px;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.92));transition:.25s}.progress-wrap{height:24px;display:flex;align-items:center}.progress{position:relative;width:100%;height:5px;border-radius:999px;background:rgba(255,255,255,.34);cursor:pointer}.buffer{position:absolute;inset:0 auto 0 0;width:0;background:rgba(255,255,255,.45);border-radius:999px}.bar{position:absolute;inset:0 auto 0 0;width:0;background:#e50914;border-radius:999px}.knob{position:absolute;top:50%;left:0;width:18px;height:18px;border-radius:50%;background:#e50914;transform:translate(-50%,-50%);box-shadow:0 0 18px rgba(229,9,20,.8)}.row{height:54px;display:flex;align-items:center;justify-content:space-between;gap:18px}.left,.right{display:flex;align-items:center;gap:13px}.ctrl{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.08);font-size:20px}.ctrl:hover{background:rgba(255,255,255,.16)}.time{direction:ltr;color:#eee;font-weight:800;min-width:128px;text-align:left}.vol{direction:ltr;width:118px;accent-color:#e50914}.pill{border-radius:999px;padding:8px 12px;background:rgba(255,255,255,.12);font-size:13px;font-weight:900}.cc.active{background:#e50914}.menu{position:fixed;z-index:50;right:22px;bottom:92px;width:min(330px,calc(100vw - 44px));background:rgba(12,12,12,.96);border:1px solid rgba(255,255,255,.12);border-radius:18px;padding:14px;box-shadow:0 22px 70px rgba(0,0,0,.6);display:none;backdrop-filter:blur(18px)}.menu.show{display:block}.menu h3{font-size:15px;margin:4px 4px 12px;color:#fff;text-align:right}.item span{white-space:normal;overflow:hidden;text-overflow:ellipsis}.item b{white-space:nowrap}.item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:12px;border-radius:12px;color:#ddd}.item:hover,.item.active{background:rgba(229,9,20,.18);color:#fff}.err{position:fixed;z-index:60;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;gap:14px;background:#050505;text-align:center;padding:28px}.err h2{font-size:28px}.err pre{max-width:900px;white-space:pre-wrap;color:#bbb;direction:ltr;text-align:left;background:#111;border:1px solid #333;padding:14px;border-radius:12px}.hidden-ui .controls,.hidden-ui .topbar,.hidden-ui .back,.hidden-ui .center-controls{opacity:0;pointer-events:none}@media(max-width:700px){.topbar{height:80px;padding:18px 70px}.back{top:18px;left:16px;width:46px;height:46px}.controls{padding:0 14px 18px}.row{height:48px}.ctrl{width:40px;height:40px}.bigplay{width:76px;height:76px}.skip{width:54px;height:54px}.vol{display:none}.time{font-size:12px;min-width:94px}.title h1{font-size:22px}}
 
 video::cue{background:rgba(0,0,0,.72);color:#fff;font-size:22px;line-height:1.35;text-shadow:0 2px 8px #000;padding:4px 8px}
 video::cue(b){font-weight:800}
@@ -81,7 +81,7 @@ body.is-loading .topbar, body.is-loading .controls, body.is-loading .center-cont
     </div>
     <div class="title"><h1 id="name">IPTV Expert</h1><p id="meta"></p></div>
   </div>
-  <div id="stage"><video id="video" playsinline preload="auto" crossorigin="anonymous"></video><iframe id="embedFrame" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="origin" style="display:none"></iframe></div><div id="subtitleOverlay"></div>
+  <div id="stage"><video id="video" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video></div><div id="subtitleOverlay"></div>
   <div id="loader" class="loader"><div class="loader-brand">FilmVibe</div><div class="spin"></div><small id="loadtext">جاري تجهيز التشغيل...</small></div>
   <div class="center-controls" id="centerControls"><button class="skip" id="rew">↶ 10</button><button class="bigplay" id="big">▶</button><button class="skip" id="fwd">10 ↷</button></div>
   <div class="episode-nav" id="episodeNav"><button class="episode-btn" id="prevEp">الحلقة السابقة</button><button class="episode-btn" id="nextEp">الحلقة التالية</button></div>
@@ -98,7 +98,7 @@ const TMDB_KEY='3a73619bbb8fc6d47742d1b5b2b707b5';
 const rawQuery=(location.search&&location.search.length>1)?location.search.slice(1):(location.pathname.startsWith('/id=')?location.pathname.slice(1):'');
 const p=new URLSearchParams(rawQuery);
 const id=p.get('id'),s=p.get('s'),e=p.get('e')||'1', live=p.get('live');
-const v=document.getElementById('video'),embedFrame=document.getElementById('embedFrame'),loader=document.getElementById('loader'),app=document.getElementById('app');
+const v=document.getElementById('video'),loader=document.getElementById('loader'),app=document.getElementById('app');
 const nameEl=document.getElementById('name'),metaEl=document.getElementById('meta'),backdrop=document.getElementById('backdrop');
 const playBtn=document.getElementById('play'),big=document.getElementById('big'),rew=document.getElementById('rew'),fwd=document.getElementById('fwd'),mute=document.getElementById('mute'),vol=document.getElementById('vol');
 const progress=document.getElementById('progress'),bar=document.getElementById('bar'),buffer=document.getElementById('buffer'),knob=document.getElementById('knob'),timeEl=document.getElementById('time');
@@ -277,12 +277,7 @@ async function start(){
     mediaResolve=d;
     subtitleOptions=Array.isArray(d.subtitles)?d.subtitles:[];
     const videos=Array.isArray(d.videos)?d.videos:[];
-    let ordered=orderedPlaybackUrls(videos,d.fallbackIframe||d.best);
-    // On iPhone/Safari, provider MP4 files may fail because of codec/range/hotlink rules.
-    // If the resolver provides provider embeds, try them early as a reliable mobile fallback.
-    if((isIOS||isSafari) && Array.isArray(d.iosFallbacks)){
-      for(const u of d.iosFallbacks){ if(u && !ordered.includes(u)) ordered.push(u); }
-    }
+    let ordered=orderedPlaybackUrls(videos,d.best);
     const first=ordered.shift();
     const backups=ordered;
     playSource(first,backups);
@@ -316,7 +311,7 @@ function looksLikeEmbed(url){
 function sourceUrl(item){
   if(!item)return '';
   if(typeof item==='string') return item;
-  return item.playUrl||item.proxiedUrl||item.url||item.best||item.fallbackIframe||'';
+  return item.playUrl||item.proxiedUrl||item.url||item.best||'';
 }
 function scoreForDevice(item){
   const type=String(item?.type||'').toLowerCase();
@@ -342,32 +337,29 @@ function orderedPlaybackUrls(videos, fallback){
   arr.sort((a,b)=>scoreForDevice(b)-scoreForDevice(a));
   const out=[];
   for(const item of arr){
+    if(String(item?.type||'').toLowerCase()==='iframe') continue;
     const raw=sourceUrl(item);
-    const prox= item?.type==='iframe' ? raw : sameOriginProxyUrl(item?.url||raw);
+    if(looksLikeEmbed(raw)) continue;
+    const prox=sameOriginProxyUrl(item?.url||raw);
     if(prox&&!out.includes(prox)) out.push(prox);
-    // Last-resort direct URL after proxy for non-iOS only.
-    if(!(isIOS||isSafari) && item?.url && !out.includes(item.url)) out.push(item.url);
+    // Direct URL fallback after same-origin proxy. Some iPhone CDNs play direct faster than through Node proxy.
+    if(item?.url && !looksLikeEmbed(item.url) && !out.includes(item.url)) out.push(item.url);
   }
-  if(fallback&&!out.includes(fallback)) out.push(fallback);
+  if(fallback && !looksLikeEmbed(fallback) && !out.includes(fallback)) out.push(fallback);
   return out;
 }
 function playSource(raw, backups=[]){
   if(!raw) return showErr();
   const url=String(raw).trim();
-  if(looksLikeEmbed(url)) return playEmbed(url);
+  if(looksLikeEmbed(url)) return tryNextDirect(backups);
   return playStream(url, backups);
 }
-function playEmbed(url){
-  try{ if(hls){hls.destroy(); hls=null;} v.pause(); v.removeAttribute('src'); v.load(); }catch(_){ }
-  v.style.display='none';
-  embedFrame.style.display='block';
-  embedFrame.src=url;
-  markReady();
-  setTimeout(()=>{ try{ markReady(); }catch(_){} },700);
-  renderQualityMenu();
+function tryNextDirect(backups=[]){
+  const next=(backups||[]).find(x=>x && !looksLikeEmbed(x));
+  if(next) return playStream(next, backups.filter(x=>x!==next));
+  return showErr();
 }
 function playStream(raw, backups=[]){
-  embedFrame.style.display='none'; embedFrame.removeAttribute('src'); v.style.display='block';
   if(hls){hls.destroy();hls=null}
   const originalRaw=String(raw||'').trim();
   const rawForType=unwrapProxyUrl(originalRaw);
@@ -384,7 +376,7 @@ function playStream(raw, backups=[]){
     if(next) return playSource(next, backups);
     showErr();
   };
-  failTimer=setTimeout(()=>tryNext('timeout'), isIOS ? 4200 : 10000);
+  failTimer=setTimeout(()=>tryNext('timeout'), isIOS ? 7000 : 10000);
 
   if(isDirectVideo){
     levels=[]; renderQualityMenu();
@@ -478,7 +470,7 @@ start();
 
 <style id="filmvibe-mobile-polish-final">
 /* FilmVibe iPhone/mobile polish */
-body.is-loading #stage video, body.is-loading #embedFrame{opacity:0!important}
+body.is-loading #stage video{opacity:0!important}
 .err{background:radial-gradient(circle at center,rgba(245,200,95,.08),#050505 55%)!important;padding:22px!important}
 .err-card{width:min(92vw,560px);border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(22,22,24,.96),rgba(8,8,10,.96));border-radius:28px;padding:30px 22px;box-shadow:0 24px 90px rgba(0,0,0,.65);display:flex;align-items:center;flex-direction:column;gap:12px}
 .err-logo{font-size:34px;font-weight:1000;background:linear-gradient(90deg,#fff,#f2c45b,#ff3b2f);-webkit-background-clip:text;background-clip:text;color:transparent}
@@ -490,7 +482,7 @@ body.is-loading #stage video, body.is-loading #embedFrame{opacity:0!important}
   .top-actions{top:10px!important;left:12px!important;padding:6px 8px!important;gap:4px!important;border-radius:20px!important;background:rgba(20,20,22,.72)!important;transform:scale(.92);transform-origin:left top}
   .tool{width:34px!important;height:34px!important;font-size:18px!important}
   #stage{inset:0!important;border-radius:0!important;overflow:hidden!important}
-  video,#embedFrame{width:100%!important;height:100%!important;object-fit:contain!important}
+  video{width:100%!important;height:100%!important;object-fit:contain!important}
   .center-controls{gap:18px!important}.bigplay{width:70px!important;height:70px!important;font-size:28px!important}.skip{width:52px!important;height:52px!important;font-size:14px!important}
   .controls{padding-left:12px!important;padding-right:12px!important;padding-bottom:calc(12px + var(--safe-bottom))!important;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.96))!important}
   .progress-wrap{height:28px!important}.row{height:48px!important}.ctrl{width:42px!important;height:42px!important;font-size:18px!important}.time{font-size:12px!important;min-width:98px!important;margin-inline-start:8px!important}.vol{display:none!important}

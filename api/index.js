@@ -103,12 +103,7 @@ function extractPlayableSource(data) {
     if (best) return best;
   }
 
-  // Embed/iframe fallback
-  const embedCandidates = [stream?.iframe, data?.iframe, stream?.embed, data?.embed, stream?.embedUrl, data?.embedUrl].filter(Boolean);
-  for (const x of embedCandidates) {
-    if (typeof x === 'string' && /^https?:\/\//i.test(x)) return x;
-  }
-
+  // Iframe/embed fallback disabled intentionally. FilmVibe uses the native player only.
   return null;
 }
 
@@ -157,20 +152,20 @@ function normalizeQuality(q) {
 
 function addVideoSource(out, url, opts = {}) {
   if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+  const type = detectMediaType(url, opts.type);
+  if (type === 'iframe') return;
   if (out._seenVideos.has(url)) return;
   out._seenVideos.add(url);
-  const type = detectMediaType(url, opts.type);
   const quality = normalizeQuality(opts.quality || opts.label || opts.height);
   const item = {
     url,
-    proxiedUrl: type === 'iframe' ? url : '/api?url=' + encodeURIComponent(url),
+    proxiedUrl: '/api?url=' + encodeURIComponent(url),
     type,
     quality: quality || null,
     label: opts.label || (quality ? quality + 'p' : (type === 'hls' ? 'Auto HLS' : type.toUpperCase())),
     source: opts.source || 'primary'
   };
-  if (type === 'iframe') out.fallbackIframe = out.fallbackIframe || url;
-  else out.videos.push(item);
+  out.videos.push(item);
 }
 
 function addSubtitleSource(out, url, opts = {}) {
@@ -204,7 +199,7 @@ function addAudioSource(out, url, opts = {}) {
 
 function extractMediaResolve(data) {
   const stream = data?.stream || data?.data?.stream || data?.result?.stream || data;
-  const out = { ok: true, videos: [], subtitles: [], audios: [], fallbackIframe: null, rawType: stream?.type || data?.type || null, sourceId: data?.sourceId || data?.source || null, _seenVideos: new Set(), _seenSubs: new Set(), _seenAudios: new Set() };
+  const out = { ok: true, videos: [], subtitles: [], audios: [], rawType: stream?.type || data?.type || null, sourceId: data?.sourceId || data?.source || null, _seenVideos: new Set(), _seenSubs: new Set(), _seenAudios: new Set() };
 
   // Direct playlist/file/url formats.
   const direct = [
@@ -234,8 +229,7 @@ function extractMediaResolve(data) {
     }
   }
 
-  // Embedded fallback.
-  for (const x of [stream?.iframe, data?.iframe, stream?.embed, data?.embed, stream?.embedUrl, data?.embedUrl]) addVideoSource(out, x, { type: 'iframe', label: 'Embed', source: 'iframe' });
+  // Iframe/embed fallback intentionally disabled to keep FilmVibe on the native player without provider ads.
 
   // Provider subtitle formats.
   const subLists = [stream?.subtitles, data?.subtitles, stream?.captions, data?.captions, stream?.tracks, data?.tracks].filter(Array.isArray);
@@ -259,7 +253,7 @@ function extractMediaResolve(data) {
 
   out.videos.sort((a, b) => (b.quality || 0) - (a.quality || 0));
   delete out._seenVideos; delete out._seenSubs; delete out._seenAudios;
-  out.best = out.videos[0]?.url || out.fallbackIframe || null;
+  out.best = out.videos[0]?.url || null;
   return out;
 }
 
@@ -274,25 +268,8 @@ async function getMediaResolve(id, season, episode) {
   if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
   const data = await res.json();
   const resolved = extractMediaResolve(data);
-  // iOS/Safari fallback: some MP4 signed sources are rejected by native Safari even when desktop works.
-  // Keep the normal direct resolver for desktop, but provide provider embed URLs as last-resort iOS fallback.
-  const safeId = encodeURIComponent(String(id));
-  const safeSeason = encodeURIComponent(String(season || 1));
-  const safeEpisode = encodeURIComponent(String(episode || 1));
-  const embedCandidates = season
-    ? [
-        `https://vidlink.pro/tv/${safeId}/${safeSeason}/${safeEpisode}`,
-        `https://vidlink.pro/embed/tv/${safeId}/${safeSeason}/${safeEpisode}`,
-        `https://vidlink.pro/embed/tv?tmdb=${safeId}&season=${safeSeason}&episode=${safeEpisode}`
-      ]
-    : [
-        `https://vidlink.pro/movie/${safeId}`,
-        `https://vidlink.pro/embed/movie/${safeId}`,
-        `https://vidlink.pro/embed/movie?tmdb=${safeId}`
-      ];
-  resolved.iosFallbacks = embedCandidates;
-  resolved.fallbackIframe = resolved.fallbackIframe || embedCandidates[0];
-  if (!resolved.best && !resolved.videos.length && !resolved.fallbackIframe) {
+  // No iframe fallback: fallback sources must be direct HLS/MP4 only.
+  if (!resolved.best && !resolved.videos.length) {
     const body = JSON.stringify(data).slice(0, 900);
     throw new Error(`No playable source in response. keys=[${Object.keys(data || {}).join(', ')}] body=${body}`);
   }
@@ -1085,6 +1062,7 @@ module.exports = async function handler(req, res) {
         if (upstream.headers['content-range']) res.setHeader('Content-Range', upstream.headers['content-range']);
         if (upstream.headers['cache-control']) res.setHeader('Cache-Control', upstream.headers['cache-control']);
         res.statusCode = upstream.statusCode;
+        if (req.method === 'HEAD') { try { upstream.resume(); } catch (_) {} return res.end(); }
         upstream.pipe(res);
       }
     } catch (err) {
