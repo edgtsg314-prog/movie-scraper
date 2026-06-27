@@ -66,6 +66,41 @@ async function getStream(id, season, episode) {
   return playlist;
 }
 
+
+async function getImdbIdForEmbed(tmdbId, season) {
+  // Build an extra backup embed from vidsrcme using the correct IMDb ID.
+  // For TV we use the show IMDb ID, then add season/episode in the embed URL.
+  try {
+    const endpoint = season ? `/tv/${tmdbId}/external_ids` : `/movie/${tmdbId}/external_ids`;
+    const data = await tmdbJson(endpoint);
+    const imdb = String(data?.imdb_id || '').trim();
+    return /^tt\d+/i.test(imdb) ? imdb : '';
+  } catch (_) {
+    return '';
+  }
+}
+
+async function buildExtraBackups(tmdbId, season, episode) {
+  const imdb = await getImdbIdForEmbed(tmdbId, season);
+  if (!imdb) return [];
+  if (season) {
+    return [`https://vidsrcme.ru/embed/tv?imdb=${encodeURIComponent(imdb)}&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}`];
+  }
+  return [`https://vidsrcme.ru/embed/movie?imdb=${encodeURIComponent(imdb)}`];
+}
+
+async function getStreamWithBackups(id, season, episode) {
+  const backup = await buildExtraBackups(id, season, episode);
+  try {
+    const url = await getStream(id, season, episode);
+    return { url, backup, source: 'vidlink' };
+  } catch (err) {
+    // If the main resolver/API fails before giving us an HLS URL, start directly with the backup embed.
+    if (backup.length) return { url: backup[0], backup: backup.slice(1), source: 'vidsrcme', primaryError: err.message };
+    throw err;
+  }
+}
+
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
 function fetchUpstream(url, redirects = 0) {
   return new Promise((resolve, reject) => {
@@ -800,8 +835,8 @@ module.exports = async function handler(req, res) {
 
   res.setHeader('Content-Type', 'application/json');
   try {
-    const url = await getStream(q.id, q.s, q.e);
-    res.end(JSON.stringify({ url }));
+    const data = await getStreamWithBackups(q.id, q.s, q.e);
+    res.end(JSON.stringify(data));
   } catch (err) {
     res.statusCode = 500;
     res.end(JSON.stringify({ error: err.message }));

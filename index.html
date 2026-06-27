@@ -236,19 +236,20 @@ async function start(){
     }catch(err){ return showErr(err.message); }
   }
   if(!id){showErr('استخدم ?id=550 أو ?id=456&s=1&e=1 أو ?live=channelId');return}
-  setupEpisodeNav();await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playSource(d.url)}catch(err){showErr(err.message)}
+  setupEpisodeNav();await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playSource(d.url, Array.isArray(d.backup)?d.backup:[])}catch(err){showErr(err.message)}
 }
 function looksLikeEmbed(url){return !/\.(m3u8|mp4|m4v|webm|mov)(\?|#|$)/i.test(String(url||''));}
 function playSource(raw, backups=[]){
   if(!raw) return showErr('رابط التشغيل مفقود');
   const url=String(raw).trim();
-  if(looksLikeEmbed(url)) return playEmbed(url);
+  if(looksLikeEmbed(url)) return playEmbed(url, backups);
   return playStream(url, backups);
 }
-function playEmbed(url){
+function playEmbed(url, backups=[]){
   try{ if(hls){hls.destroy(); hls=null;} v.pause(); v.removeAttribute('src'); v.load(); }catch(_){ }
   v.style.display='none';
   embedFrame.style.display='block';
+  embedFrame.onerror=()=>{const next=backups.shift(); if(next) playSource(next,backups);};
   embedFrame.src=url;
   loader.style.display='none';
   renderQualityMenu();
