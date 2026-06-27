@@ -57,6 +57,16 @@ video::-webkit-media-text-track-display{font-family:-apple-system,BlinkMacSystem
 video::cue{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!important;font-weight:800!important;background:rgba(0,0,0,.68)!important;color:#fff!important;text-shadow:0 2px 8px #000!important}
 
 </style>
+
+<style id="kl-premium-loading-mobile-fix">
+/* Loading state: show only a premium loader/logo, not player buttons on black screen */
+body.is-loading .topbar, body.is-loading .controls, body.is-loading .center-controls, body.is-loading .episode-nav, body.is-loading .menu{opacity:0!important;pointer-events:none!important}
+.loader{background:radial-gradient(circle at center,rgba(229,9,20,.08),#000 48%,#000 100%)!important;z-index:80!important}
+.loader-brand{font-size:clamp(30px,5vw,54px);font-weight:1000;letter-spacing:.5px;background:linear-gradient(90deg,#fff,#f5c85f,#e50914);-webkit-background-clip:text;background-clip:text;color:transparent;text-shadow:0 12px 45px rgba(229,9,20,.28);margin-bottom:4px}
+.loader small{font-size:13px;color:#aaa;letter-spacing:.2px}.spin{width:54px!important;height:54px!important;border-width:4px!important;border-top-color:#f5c85f!important;box-shadow:0 0 30px rgba(245,200,95,.18)}
+@media(max-width:760px){.loader-brand{font-size:36px}.spin{width:46px!important;height:46px!important}.loader small{font-size:12px}}
+@supports (-webkit-touch-callout:none){video{height:100%!important;width:100%!important}video::cue{font-size:20px!important;line-height:1.35!important;background:rgba(0,0,0,.72)!important;color:white!important}}
+</style>
 </head>
 <body>
 <div id="app">
@@ -72,7 +82,7 @@ video::cue{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!im
     <div class="title"><h1 id="name">IPTV Expert</h1><p id="meta"></p></div>
   </div>
   <div id="stage"><video id="video" playsinline preload="auto" crossorigin="anonymous"></video><iframe id="embedFrame" allow="autoplay; fullscreen; picture-in-picture" allowfullscreen referrerpolicy="origin" style="display:none"></iframe></div><div id="subtitleOverlay"></div>
-  <div id="loader" class="loader"><div class="spin"></div><small id="loadtext">جاري تجهيز التشغيل...</small></div>
+  <div id="loader" class="loader"><div class="loader-brand">FilmVibe</div><div class="spin"></div><small id="loadtext">جاري تجهيز التشغيل...</small></div>
   <div class="center-controls" id="centerControls"><button class="skip" id="rew">↶ 10</button><button class="bigplay" id="big">▶</button><button class="skip" id="fwd">10 ↷</button></div>
   <div class="episode-nav" id="episodeNav"><button class="episode-btn" id="prevEp">الحلقة السابقة</button><button class="episode-btn" id="nextEp">الحلقة التالية</button></div>
   <div class="controls" id="controls">
@@ -83,6 +93,7 @@ video::cue{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!im
   <div class="err" id="err"><h2>تعذر التشغيل</h2><p>جرّب لاحقًا أو جرّب رابطًا آخر.</p><pre id="errDetail"></pre></div>
 </div>
 <script>
+document.body.classList.add('is-loading');
 const TMDB_KEY='3a73619bbb8fc6d47742d1b5b2b707b5';
 const rawQuery=(location.search&&location.search.length>1)?location.search.slice(1):(location.pathname.startsWith('/id=')?location.pathname.slice(1):'');
 const p=new URLSearchParams(rawQuery);
@@ -95,6 +106,7 @@ const settings=document.getElementById('settings'),menu=document.getElementById(
 const settingsTop=document.getElementById('settingsTop'),ccTop=document.getElementById('ccTop'),pipTop=document.getElementById('pipTop'),fitTop=document.getElementById('fitTop'),episodeNav=document.getElementById('episodeNav'),prevEp=document.getElementById('prevEp'),nextEp=document.getElementById('nextEp');
 let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null,arabicCues=[],arabicEnabled=false,subtitleOptions=[],selectedSubtitleChoice=0,subtitleOffset=0,currentSubtitleLabel='العربية',mediaResolve=null;
 const subtitleOverlay=document.getElementById('subtitleOverlay');
+v.setAttribute('playsinline',''); v.setAttribute('webkit-playsinline',''); v.setAttribute('x-webkit-airplay','allow');
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1);
 const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
 const isLive=!!live; const isTv=!!s&&!isLive; const storageKey='iptv-progress-'+(isLive?'live-'+live:(isTv?'tv-'+id+'-'+s+'-'+e:'movie-'+id)); selectedSubtitleChoice=Number(localStorage.getItem(storageKey+'-sub-choice')||0); subtitleOffset=Number(localStorage.getItem(storageKey+'-sub-offset')||0);
@@ -113,7 +125,8 @@ function setupEpisodeNav(){
   nextEp.onclick=()=>{ location.href=buildWatchUrl(seasonNum, epNum+1); };
 }
 function fmt(t){t=Math.max(0,Math.floor(t||0));let h=Math.floor(t/3600),m=Math.floor((t%3600)/60),sec=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
-function showErr(msg){loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||''}
+function showErr(msg){document.body.classList.remove('is-loading'); loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||''}
+function markReady(){document.body.classList.remove('is-loading'); loader.style.display='none';}
 function showUi(delay=3200){app.classList.remove('hidden-ui');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!v.paused)app.classList.add('hidden-ui')},delay)}
 function hideUi(){clearTimeout(hideTimer); if(!v.paused) app.classList.add('hidden-ui')}
 function setVisible(){showUi(3200)}
@@ -252,11 +265,12 @@ async function start(){
     if(d.error||d.ok===false)throw new Error(d.error||'تعذر حل مصدر التشغيل');
     mediaResolve=d;
     subtitleOptions=Array.isArray(d.subtitles)?d.subtitles:[];
-    await fetchArabicSubtitle();
     const videos=Array.isArray(d.videos)?d.videos:[];
     const first=videos[0]?.url||d.best||d.fallbackIframe;
     const backups=videos.slice(1).map(x=>x.url).filter(Boolean);
     playSource(first,backups);
+    // Do not block playback while searching/downloading subtitles. This is important on iPhone.
+    setTimeout(()=>fetchArabicSubtitle().catch(()=>{}),1200);
   }catch(err){showErr(err.message)}
 }
 function looksLikeEmbed(url){return !/\.(m3u8|mp4|m4v|webm|mov)(\?|#|$)/i.test(String(url||''));}
@@ -282,18 +296,23 @@ function playStream(raw, backups=[]){
   if(isDirectVideo){
     levels=[]; renderQualityMenu();
     v.src=src;
-    v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('canplay',markReady,{once:true});
+    v.addEventListener('playing',markReady,{once:true});
+    v.addEventListener('loadedmetadata',()=>{markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
     v.addEventListener('error',()=>{const next=backups.shift(); if(next) return playSource(next,backups); showErr('تعذر تشغيل ملف الفيديو المباشر')},{once:true});
     return;
   }
   if(Hls.isSupported()){
     hls=new Hls({enableWorker:true,lowLatencyMode:false});
     hls.loadSource(src); hls.attachMedia(v);
-    hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];loader.style.display='none';restoreProgress();v.play().catch(()=>{});renderQualityMenu()});
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];markReady();restoreProgress();v.play().catch(()=>{});renderQualityMenu()});
+    hls.on(Hls.Events.FRAG_BUFFERED,()=>markReady());
     hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal){const next=backups.shift(); if(next) return playSource(next,backups); showErr(data.details||'HLS error')}})
   }else if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src=src;
-    v.addEventListener('loadedmetadata',()=>{loader.style.display='none';restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('canplay',markReady,{once:true});
+    v.addEventListener('playing',markReady,{once:true});
+    v.addEventListener('loadedmetadata',()=>{markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
     v.addEventListener('error',()=>{const next=backups.shift(); if(next) return playSource(next,backups); showErr('تعذر تشغيل HLS')},{once:true});
   }else showErr('المتصفح لا يدعم HLS')
 }

@@ -876,6 +876,10 @@ async function liveAdminApi(req, res, q) {
 // ── Vercel serverless handler ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept,Origin,Referer,User-Agent');
+  if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
+  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.end('ok');
@@ -986,7 +990,8 @@ module.exports = async function handler(req, res) {
   if (q.url) {
     const url = decodeURIComponent(q.url);
     try {
-      const upstream = await fetchUpstream(url, 0, req.headers.range ? { Range: req.headers.range } : {});
+      const rangeHeader = req.headers.range || req.headers.Range;
+      const upstream = await fetchUpstream(url, 0, rangeHeader ? { Range: rangeHeader } : {});
       const ct = (upstream.headers['content-type'] || '').toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
 
@@ -995,9 +1000,13 @@ module.exports = async function handler(req, res) {
         for await (const chunk of upstream) chunks.push(chunk);
         const body = Buffer.concat(chunks).toString('utf8');
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Access-Control-Allow-Origin','*');
+        res.setHeader('Cache-Control','no-store');
         return res.end(rewriteM3u8(body, url));
       } else {
         res.setHeader('Content-Type', ct || 'application/octet-stream');
+        res.setHeader('Access-Control-Allow-Origin','*');
+        res.setHeader('Accept-Ranges','bytes');
         if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);
         if (upstream.headers['accept-ranges']) res.setHeader('Accept-Ranges', upstream.headers['accept-ranges']);
         if (upstream.headers['content-range']) res.setHeader('Content-Range', upstream.headers['content-range']);
@@ -1022,22 +1031,9 @@ module.exports = async function handler(req, res) {
     }
     try {
       const resolved = await getMediaResolve(q.id, q.s, q.e);
-      let osSubs = [];
-      try {
-        const candidates = await getArabicSubtitleCandidates(q.id, q.s, q.e || '1');
-        osSubs = candidates.slice(0, 12).map((x, i) => ({
-          url: `/api?subtitle=1&id=${encodeURIComponent(q.id)}${q.s ? `&s=${encodeURIComponent(q.s)}&e=${encodeURIComponent(q.e || '1')}` : ''}&choice=${i}`,
-          proxiedUrl: `/api?subtitle=1&id=${encodeURIComponent(q.id)}${q.s ? `&s=${encodeURIComponent(q.s)}&e=${encodeURIComponent(q.e || '1')}` : ''}&choice=${i}`,
-          type: 'vtt',
-          lang: 'ar',
-          label: x.label || `العربية ${i + 1}`,
-          default: i === 0,
-          source: 'OpenSubtitles'
-        }));
-      } catch (subErr) {
-        resolved.subtitleError = subErr.message;
-      }
-      resolved.subtitles = [...osSubs, ...(resolved.subtitles || [])];
+      // Keep resolve fast: subtitles are loaded in the background by /api?subtitle_list or /api?subtitle.
+      resolved.subtitles = Array.isArray(resolved.subtitles) ? resolved.subtitles : [];
+      resolved.subtitleMode = 'background';
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.setHeader('Cache-Control', 'no-store');
