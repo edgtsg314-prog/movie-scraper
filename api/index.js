@@ -48,25 +48,8 @@ function bootWasm() {
 
 // ── Stream URL resolver ───────────────────────────────────────────────────────
 async function getStream(id, season, episode) {
-  await bootWasm();
-  const token = globalThis.getAdv(String(id));
-  if (!token) throw new Error('getAdv returned null');
-
-  const apiUrl = season
-    ? `https://vidlink.pro/api/b/tv/${token}/${season}/${episode || 1}?multiLang=0`
-    : `https://vidlink.pro/api/b/movie/${token}?multiLang=0`;
-
-  const res = await fetch(apiUrl, {
-    headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA }
-  });
-  if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
-  const data = await res.json();
-  const playable = extractPlayableSource(data);
-  if (!playable) {
-    const body = JSON.stringify(data).slice(0, 700);
-    throw new Error(`No playable source in response. keys=[${Object.keys(data || {}).join(', ')}] body=${body}`);
-  }
-  return playable;
+  const resolved = await getMediaResolve(id, season, episode);
+  return resolved.best;
 }
 
 function extractPlayableSource(data) {
@@ -139,6 +122,148 @@ function pickBestFromSources(list) {
   normalized.sort((a, b) => b.q - a.q);
   return normalized[0]?.url || null;
 }
+function detectMediaType(url, hintedType) {
+  const u = String(url || '').split('?')[0].toLowerCase();
+  const h = String(hintedType || '').toLowerCase();
+  if (h.includes('mpeg') || h.includes('hls') || u.endsWith('.m3u8')) return 'hls';
+  if (h.includes('dash') || u.endsWith('.mpd')) return 'dash';
+  if (h.includes('mp4') || u.endsWith('.mp4') || u.endsWith('.m4v') || u.endsWith('.mov')) return 'mp4';
+  if (h.includes('webm') || u.endsWith('.webm')) return 'webm';
+  if (h.includes('iframe') || h.includes('embed')) return 'iframe';
+  return /^https?:\/\//i.test(String(url || '')) ? 'unknown' : 'unknown';
+}
+
+function normalizeQuality(q) {
+  const n = Number(String(q || '').replace(/[^0-9]/g, '')) || 0;
+  return n;
+}
+
+function addVideoSource(out, url, opts = {}) {
+  if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+  if (out._seenVideos.has(url)) return;
+  out._seenVideos.add(url);
+  const type = detectMediaType(url, opts.type);
+  const quality = normalizeQuality(opts.quality || opts.label || opts.height);
+  const item = {
+    url,
+    proxiedUrl: type === 'iframe' ? url : '/api?url=' + encodeURIComponent(url),
+    type,
+    quality: quality || null,
+    label: opts.label || (quality ? quality + 'p' : (type === 'hls' ? 'Auto HLS' : type.toUpperCase())),
+    source: opts.source || 'primary'
+  };
+  if (type === 'iframe') out.fallbackIframe = out.fallbackIframe || url;
+  else out.videos.push(item);
+}
+
+function addSubtitleSource(out, url, opts = {}) {
+  if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+  if (out._seenSubs.has(url)) return;
+  out._seenSubs.add(url);
+  const u = url.split('?')[0].toLowerCase();
+  let type = opts.type || (u.endsWith('.vtt') ? 'vtt' : u.endsWith('.srt') ? 'srt' : (u.endsWith('.ass') || u.endsWith('.ssa')) ? 'ass' : 'unknown');
+  out.subtitles.push({
+    url,
+    proxiedUrl: '/api?subtitle_url=' + encodeURIComponent(url),
+    type,
+    lang: opts.lang || opts.language || 'unknown',
+    label: opts.label || opts.name || opts.lang || 'Subtitle',
+    default: !!opts.default
+  });
+}
+
+function addAudioSource(out, url, opts = {}) {
+  if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
+  if (out._seenAudios.has(url)) return;
+  out._seenAudios.add(url);
+  out.audios.push({
+    url,
+    proxiedUrl: '/api?url=' + encodeURIComponent(url),
+    type: opts.type || 'audio',
+    lang: opts.lang || opts.language || 'unknown',
+    label: opts.label || opts.name || opts.lang || 'Audio'
+  });
+}
+
+function extractMediaResolve(data) {
+  const stream = data?.stream || data?.data?.stream || data?.result?.stream || data;
+  const out = { ok: true, videos: [], subtitles: [], audios: [], fallbackIframe: null, rawType: stream?.type || data?.type || null, sourceId: data?.sourceId || data?.source || null, _seenVideos: new Set(), _seenSubs: new Set(), _seenAudios: new Set() };
+
+  // Direct playlist/file/url formats.
+  const direct = [
+    [stream?.playlist, 'hls', 'playlist'], [data?.playlist, 'hls', 'playlist'],
+    [stream?.url, stream?.type, 'stream.url'], [data?.url, data?.type, 'url'],
+    [stream?.file, stream?.type, 'stream.file'], [data?.file, data?.type, 'file'],
+    [stream?.src, stream?.type, 'stream.src'], [data?.src, data?.type, 'src'],
+    [stream?.source, stream?.type, 'stream.source'], [data?.source, data?.type, 'source'], [data?.link, data?.type, 'link']
+  ];
+  for (const [url, type, source] of direct) addVideoSource(out, url, { type, source });
+
+  // Quality map: { qualities: { "1080": {url,type}, "720": "..." } }
+  const qMaps = [stream?.qualities, data?.qualities, data?.sources?.qualities].filter(x => x && typeof x === 'object' && !Array.isArray(x));
+  for (const qualities of qMaps) {
+    for (const [quality, item] of Object.entries(qualities)) {
+      const url = typeof item === 'string' ? item : item?.url || item?.file || item?.src || item?.link;
+      addVideoSource(out, url, { quality, label: normalizeQuality(quality) ? normalizeQuality(quality) + 'p' : quality, type: typeof item === 'object' ? item?.type : undefined, source: 'qualities' });
+    }
+  }
+
+  // Common arrays.
+  const sourceLists = [stream?.sources, data?.sources, stream?.files, data?.files, stream?.videos, data?.videos].filter(Array.isArray);
+  for (const list of sourceLists) {
+    for (const item of list) {
+      const url = typeof item === 'string' ? item : item?.url || item?.file || item?.src || item?.link;
+      addVideoSource(out, url, { quality: item?.quality || item?.label || item?.height, label: item?.label || item?.quality, type: item?.type || item?.mimeType, source: 'sources' });
+    }
+  }
+
+  // Embedded fallback.
+  for (const x of [stream?.iframe, data?.iframe, stream?.embed, data?.embed, stream?.embedUrl, data?.embedUrl]) addVideoSource(out, x, { type: 'iframe', label: 'Embed', source: 'iframe' });
+
+  // Provider subtitle formats.
+  const subLists = [stream?.subtitles, data?.subtitles, stream?.captions, data?.captions, stream?.tracks, data?.tracks].filter(Array.isArray);
+  for (const list of subLists) {
+    for (const item of list) {
+      const url = typeof item === 'string' ? item : item?.url || item?.file || item?.src || item?.link;
+      const kind = String(item?.kind || item?.type || '').toLowerCase();
+      if (kind && !/(subtitle|caption|captions|vtt|srt|ass|ssa)/i.test(kind)) continue;
+      addSubtitleSource(out, url, { type: item?.type || item?.format, lang: item?.lang || item?.srclang || item?.language, label: item?.label || item?.name, default: item?.default });
+    }
+  }
+
+  // Audio tracks if provider returns them separately.
+  const audioLists = [stream?.audios, data?.audios, stream?.audio, data?.audio].filter(Array.isArray);
+  for (const list of audioLists) {
+    for (const item of list) {
+      const url = typeof item === 'string' ? item : item?.url || item?.file || item?.src || item?.link;
+      addAudioSource(out, url, { type: item?.type || item?.format, lang: item?.lang || item?.language, label: item?.label || item?.name });
+    }
+  }
+
+  out.videos.sort((a, b) => (b.quality || 0) - (a.quality || 0));
+  delete out._seenVideos; delete out._seenSubs; delete out._seenAudios;
+  out.best = out.videos[0]?.url || out.fallbackIframe || null;
+  return out;
+}
+
+async function getMediaResolve(id, season, episode) {
+  await bootWasm();
+  const token = globalThis.getAdv(String(id));
+  if (!token) throw new Error('getAdv returned null');
+  const apiUrl = season
+    ? `https://vidlink.pro/api/b/tv/${token}/${season}/${episode || 1}?multiLang=0`
+    : `https://vidlink.pro/api/b/movie/${token}?multiLang=0`;
+  const res = await fetch(apiUrl, { headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA } });
+  if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
+  const data = await res.json();
+  const resolved = extractMediaResolve(data);
+  if (!resolved.best && !resolved.videos.length && !resolved.fallbackIframe) {
+    const body = JSON.stringify(data).slice(0, 900);
+    throw new Error(`No playable source in response. keys=[${Object.keys(data || {}).join(', ')}] body=${body}`);
+  }
+  return resolved;
+}
+
 
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
 function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
@@ -838,6 +963,25 @@ module.exports = async function handler(req, res) {
     }
   }
 
+  // Generic external subtitle proxy/converter: /api?subtitle_url=https://...file.srt|vtt|ass
+  if (q.subtitle_url) {
+    const url = decodeURIComponent(q.subtitle_url);
+    try {
+      const upstream = await fetch(url, { headers: { 'User-Agent': BROWSER_UA, Referer: REFERER, Origin: ORIGIN, Accept: '*/*' } });
+      const text = await upstream.text();
+      if (!upstream.ok) throw new Error(`subtitle upstream ${upstream.status}`);
+      const clean = /^WEBVTT/i.test(text.trim()) ? text : srtToVtt(text);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'text/vtt; charset=utf-8');
+      res.setHeader('Cache-Control', 'public, max-age=86400, s-maxage=604800');
+      return res.end(clean);
+    } catch (err) {
+      res.statusCode = 502;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+  }
+
   // Proxy mode: /api?url=...
   if (q.url) {
     const url = decodeURIComponent(q.url);
@@ -866,6 +1010,43 @@ module.exports = async function handler(req, res) {
       res.end(err.message);
     }
     return;
+  }
+
+  // Full media resolver: returns video/audio/subtitle candidates for the player.
+  // /api?resolve=1&id=550 OR /api?resolve=1&id=94997&s=1&e=1
+  if (q.resolve) {
+    if (!q.id) {
+      res.statusCode = 400;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: 'missing id' }));
+    }
+    try {
+      const resolved = await getMediaResolve(q.id, q.s, q.e);
+      let osSubs = [];
+      try {
+        const candidates = await getArabicSubtitleCandidates(q.id, q.s, q.e || '1');
+        osSubs = candidates.slice(0, 12).map((x, i) => ({
+          url: `/api?subtitle=1&id=${encodeURIComponent(q.id)}${q.s ? `&s=${encodeURIComponent(q.s)}&e=${encodeURIComponent(q.e || '1')}` : ''}&choice=${i}`,
+          proxiedUrl: `/api?subtitle=1&id=${encodeURIComponent(q.id)}${q.s ? `&s=${encodeURIComponent(q.s)}&e=${encodeURIComponent(q.e || '1')}` : ''}&choice=${i}`,
+          type: 'vtt',
+          lang: 'ar',
+          label: x.label || `العربية ${i + 1}`,
+          default: i === 0,
+          source: 'OpenSubtitles'
+        }));
+      } catch (subErr) {
+        resolved.subtitleError = subErr.message;
+      }
+      resolved.subtitles = [...osSubs, ...(resolved.subtitles || [])];
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-store');
+      return res.end(JSON.stringify(resolved, null, 2));
+    } catch (err) {
+      res.statusCode = 500;
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      return res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
   }
 
   // Stream lookup: /api?id=550  or  /api?id=456&s=1&e=2
