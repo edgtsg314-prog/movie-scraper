@@ -9,6 +9,7 @@ const REFERER = 'https://vidlink.pro/';
 const ORIGIN  = 'https://vidlink.pro';
 const UA      = process.env.APP_USER_AGENT || 'IPTVExpert/1.0 (+https://localhost)';
 const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/124';
+const IOS_UA = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1';
 
 const TMDB_KEY = process.env.TMDB_API_KEY || process.env.TMDB_KEY || '3a73619bbb8fc6d47742d1b5b2b707b5';
 const OS_API_KEY = process.env.OPENSUBTITLES_API_KEY || 'W8SxuyZGOok0S2YIF2ZV4PBBYoVUJDTf';
@@ -287,7 +288,7 @@ function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
     if (redirects > 5) return reject(new Error('too many redirects'));
     const client = url.startsWith('https') ? https : http;
     const req = client.get(url, {
-      headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*', ...extraHeaders },
+      headers: { Referer: extraHeaders.Referer || REFERER, Origin: extraHeaders.Origin || ORIGIN, 'User-Agent': extraHeaders['User-Agent'] || BROWSER_UA, Accept: '*/*', ...extraHeaders },
       timeout: UPSTREAM_TIMEOUT_MS
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
@@ -300,6 +301,19 @@ function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
     req.on('timeout', () => req.destroy(new Error('upstream timeout')));
     req.on('error', reject);
   });
+}
+
+
+function contentTypeForUrl(url, upstreamType) {
+  const ct = String(upstreamType || '').toLowerCase();
+  const clean = String(url || '').split('?')[0].toLowerCase();
+  if (ct && !ct.includes('octet-stream') && !ct.includes('binary')) return ct;
+  if (clean.endsWith('.mp4') || clean.endsWith('.m4v')) return 'video/mp4';
+  if (clean.endsWith('.mov')) return 'video/quicktime';
+  if (clean.endsWith('.webm')) return 'video/webm';
+  if (clean.endsWith('.m3u8')) return 'application/vnd.apple.mpegurl';
+  if (clean.endsWith('.mpd')) return 'application/dash+xml';
+  return ct || 'application/octet-stream';
 }
 
 function rewriteM3u8(body, url) {
@@ -902,7 +916,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization, Accept, Origin, Referer, User-Agent');
   if (req.method === 'OPTIONS') return res.end('ok');
 
   const { searchParams } = new URL(req.url, 'http://localhost');
@@ -1019,8 +1033,20 @@ module.exports = async function handler(req, res) {
     const url = decodeURIComponent(q.url);
     try {
       const rangeHeader = req.headers.range || req.headers.Range;
-      const upstream = await fetchUpstream(url, 0, rangeHeader ? { Range: rangeHeader } : {});
-      const ct = (upstream.headers['content-type'] || '').toLowerCase();
+      const uaHeader = String(req.headers['user-agent'] || '');
+      const isMobileSafari = /iPhone|iPad|iPod/i.test(uaHeader) || (/Safari/i.test(uaHeader) && !/Chrome|CriOS|Android/i.test(uaHeader));
+      const upstreamHeaders = {
+        ...(rangeHeader ? { Range: rangeHeader } : {}),
+        'User-Agent': isMobileSafari ? IOS_UA : BROWSER_UA,
+        Referer: REFERER,
+        Origin: ORIGIN
+      };
+      let upstream = await fetchUpstream(url, 0, upstreamHeaders);
+      if (upstream.statusCode >= 400) {
+        try { upstream.resume(); } catch (_) {}
+        upstream = await fetchUpstream(url, 0, { ...(rangeHeader ? { Range: rangeHeader } : {}), 'User-Agent': isMobileSafari ? IOS_UA : BROWSER_UA, Referer: new URL(url).origin + '/', Origin: new URL(url).origin });
+      }
+      const ct = contentTypeForUrl(url, upstream.headers['content-type'] || '').toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
 
       if (isM3u8) {
@@ -1033,6 +1059,7 @@ module.exports = async function handler(req, res) {
         return res.end(rewriteM3u8(body, url));
       } else {
         res.setHeader('Content-Type', ct || 'application/octet-stream');
+        res.setHeader('X-Content-Type-Options','nosniff');
         res.setHeader('Access-Control-Allow-Origin','*');
         res.setHeader('Accept-Ranges','bytes');
         if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);

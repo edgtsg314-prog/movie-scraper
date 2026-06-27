@@ -90,7 +90,7 @@ body.is-loading .topbar, body.is-loading .controls, body.is-loading .center-cont
     <div class="row"><div class="left"><button class="ctrl" id="play">▶</button><button class="ctrl" id="mute">🔊</button><input class="vol" id="vol" type="range" min="0" max="1" step="0.01" value="1"><span class="time" id="time">0:00 / 0:00</span></div><div class="right"><button class="pill" id="quality">Auto</button><button class="pill cc" id="cc">CC</button><button class="ctrl" id="settings">⚙</button><button class="ctrl" id="pip">▣</button><button class="ctrl" id="full">⛶</button></div></div>
   </div>
   <div class="menu" id="menu"><h3>الإعدادات</h3><div id="menuItems"></div></div>
-  <div class="err" id="err"><div class="err-card"><div class="err-logo">FilmVibe</div><h2>نعتذر، نواجه مشكلة مؤقتة في التشغيل</h2><p>أعد تحميل الصفحة أو جرّب مرة أخرى بعد قليل. إذا كان لديك سيرفر احتياطي سيحاول النظام استخدامه تلقائيًا.</p><pre id="errDetail"></pre><div class="err-actions"><button onclick="location.reload()">إعادة تحميل الصفحة</button><button onclick="history.back()">الرجوع</button></div></div></div>
+  <div class="err" id="err"><div class="err-card"><div class="err-logo">FilmVibe</div><h2>نعتذر، نواجه حالياً مشكلة مؤقتة في خوادم التشغيل</h2><p>يتم تبديل الخوادم تلقائياً عند توفر مصدر بديل.</p><pre id="errDetail" style="display:none"></pre></div></div>
 </div>
 <script>
 document.body.classList.add('is-loading');
@@ -125,7 +125,7 @@ function setupEpisodeNav(){
   nextEp.onclick=()=>{ location.href=buildWatchUrl(seasonNum, epNum+1); };
 }
 function fmt(t){t=Math.max(0,Math.floor(t||0));let h=Math.floor(t/3600),m=Math.floor((t%3600)/60),sec=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
-function showErr(msg){document.body.classList.remove('is-loading'); loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||'تعذر تجهيز مصدر الفيديو حاليًا.'}
+function showErr(msg){document.body.classList.remove('is-loading'); loader.style.display='none'; const e=document.getElementById('err'); if(e)e.style.display='flex'; const d=document.getElementById('errDetail'); if(d){ d.textContent=''; d.style.display='none'; }}
 function markReady(){document.body.classList.remove('is-loading'); loader.style.display='none';}
 function showUi(delay=3200){app.classList.remove('hidden-ui');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!v.paused)app.classList.add('hidden-ui')},delay)}
 function hideUi(){clearTimeout(hideTimer); if(!v.paused) app.classList.add('hidden-ui')}
@@ -277,16 +277,77 @@ async function start(){
     mediaResolve=d;
     subtitleOptions=Array.isArray(d.subtitles)?d.subtitles:[];
     const videos=Array.isArray(d.videos)?d.videos:[];
-    const first=videos[0]?.url||d.best||d.fallbackIframe;
-    const backups=videos.slice(1).map(x=>x.url).filter(Boolean);
+    const ordered=orderedPlaybackUrls(videos,d.fallbackIframe||d.best);
+    const first=ordered.shift();
+    const backups=ordered;
     playSource(first,backups);
     // Do not block playback while searching/downloading subtitles. This is important on iPhone.
     setTimeout(()=>fetchArabicSubtitle().catch(()=>{}),1200);
   }catch(err){showErr(err.message)}
 }
-function looksLikeEmbed(url){return !/\.(m3u8|mp4|m4v|webm|mov)(\?|#|$)/i.test(String(url||''));}
+
+function sameOriginProxyUrl(url){
+  const u=String(url||'').trim();
+  if(!u)return '';
+  if(u.startsWith('/api?url=')||u.startsWith('/api/')) return u;
+  return '/api?url='+encodeURIComponent(u);
+}
+function unwrapProxyUrl(url){
+  const u=String(url||'').trim();
+  try{
+    if(u.startsWith('/api?')){
+      const x=new URL(u, location.origin);
+      return decodeURIComponent(x.searchParams.get('url')||u);
+    }
+  }catch(_){ }
+  return u;
+}
+function looksLikeEmbed(url){
+  const raw=unwrapProxyUrl(url);
+  if(String(url||'').startsWith('/api?url=')) return false;
+  if(/\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(raw.split('?')[0])) return false;
+  return /^https?:\/\//i.test(raw);
+}
+function sourceUrl(item){
+  if(!item)return '';
+  if(typeof item==='string') return item;
+  return item.playUrl||item.proxiedUrl||item.url||item.best||item.fallbackIframe||'';
+}
+function scoreForDevice(item){
+  const type=String(item?.type||'').toLowerCase();
+  const q=Number(item?.quality||0);
+  if(isIOS||isSafari){
+    if(type==='hls') return 10000 + q;
+    if(type==='mp4'){
+      // iPhone starts faster with moderate MP4. Keep 720/480/360 before huge 1080+ files.
+      if(q===720) return 9000;
+      if(q===480) return 8800;
+      if(q===360) return 8600;
+      if(q===1080) return 7800;
+      if(q>1080) return 7000;
+      return 8200;
+    }
+    return 4000 + q;
+  }
+  if(type==='hls') return 9000 + q;
+  return 8000 + q;
+}
+function orderedPlaybackUrls(videos, fallback){
+  const arr=(Array.isArray(videos)?videos:[]).slice().filter(x=>sourceUrl(x));
+  arr.sort((a,b)=>scoreForDevice(b)-scoreForDevice(a));
+  const out=[];
+  for(const item of arr){
+    const raw=sourceUrl(item);
+    const prox= item?.type==='iframe' ? raw : sameOriginProxyUrl(item?.url||raw);
+    if(prox&&!out.includes(prox)) out.push(prox);
+    // Last-resort direct URL after proxy for non-iOS only.
+    if(!(isIOS||isSafari) && item?.url && !out.includes(item.url)) out.push(item.url);
+  }
+  if(fallback&&!out.includes(fallback)) out.push(fallback);
+  return out;
+}
 function playSource(raw, backups=[]){
-  if(!raw) return showErr('لا يوجد مصدر تشغيل متاح لهذا المحتوى حاليًا.');
+  if(!raw) return showErr();
   const url=String(raw).trim();
   if(looksLikeEmbed(url)) return playEmbed(url);
   return playStream(url, backups);
@@ -303,8 +364,10 @@ function playStream(raw, backups=[]){
   embedFrame.style.display='none'; embedFrame.removeAttribute('src'); v.style.display='block';
   if(hls){hls.destroy();hls=null}
   const originalRaw=String(raw||'').trim();
-  const src=(isIOS||isSafari) ? originalRaw : ('/api?url='+encodeURIComponent(originalRaw));
-  const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(originalRaw.split('?')[0]);
+  const rawForType=unwrapProxyUrl(originalRaw);
+  const src= originalRaw.startsWith('/api?url=') ? originalRaw : sameOriginProxyUrl(originalRaw);
+  const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(rawForType.split('?')[0]);
+  const isHls=/\.m3u8(\?|#|$)/i.test(rawForType.split('?')[0]);
   let started=false;
   let failTimer=null;
   const clearStartGuards=()=>{started=true; if(failTimer) clearTimeout(failTimer); failTimer=null;};
@@ -313,9 +376,9 @@ function playStream(raw, backups=[]){
     clearStartGuards();
     const next=backups.shift();
     if(next) return playSource(next, backups);
-    showErr(msg||'نعتذر، نواجه مشكلة مؤقتة في تشغيل هذا المصدر. أعد تحميل الصفحة أو جرّب لاحقًا.');
+    showErr();
   };
-  failTimer=setTimeout(()=>tryNext('استغرق تجهيز الفيديو وقتًا أطول من المتوقع'), isIOS ? 9000 : 13000);
+  failTimer=setTimeout(()=>tryNext('timeout'), isIOS ? 7000 : 12000);
 
   if(isDirectVideo){
     levels=[]; renderQualityMenu();
@@ -323,7 +386,7 @@ function playStream(raw, backups=[]){
     v.addEventListener('canplay',()=>{clearStartGuards();markReady();},{once:true});
     v.addEventListener('playing',()=>{clearStartGuards();markReady();},{once:true});
     v.addEventListener('loadedmetadata',()=>{clearStartGuards();markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
-    v.addEventListener('error',()=>tryNext('تعذر تشغيل ملف الفيديو المباشر'),{once:true});
+    v.addEventListener('error',()=>tryNext('video-error'),{once:true});
     v.load();
     // iPhone sometimes needs an explicit play after metadata if user tapped play.
     setTimeout(()=>{ if(!started && !v.error) v.play().catch(()=>{}); }, 1200);
@@ -340,7 +403,7 @@ function playStream(raw, backups=[]){
     v.addEventListener('canplay',()=>{clearStartGuards();markReady();},{once:true});
     v.addEventListener('playing',()=>{clearStartGuards();markReady();},{once:true});
     v.addEventListener('loadedmetadata',()=>{clearStartGuards();markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
-    v.addEventListener('error',()=>tryNext('تعذر تشغيل HLS'),{once:true});
+    v.addEventListener('error',()=>tryNext('hls-error'),{once:true});
     v.load();
     setTimeout(()=>{ if(!started && !v.error) v.play().catch(()=>{}); }, 1200);
   }else tryNext('المتصفح لا يدعم HLS')
@@ -430,6 +493,17 @@ body.is-loading #stage video, body.is-loading #embedFrame{opacity:0!important}
 }
 @media(max-width:760px) and (orientation:portrait){
   .center-controls{top:50%!important}
+}
+</style>
+
+<style id="filmvibe-ios-server-message-clean">
+.err-card{max-width:560px!important}.err p{margin:0!important}.err-actions{display:none!important}.err pre{display:none!important}
+@media(max-width:760px){
+  .err{padding:16px!important;align-items:center!important;justify-content:center!important}
+  .err-card{width:min(88vw,420px)!important;border-radius:24px!important;padding:28px 20px!important;gap:14px!important}
+  .err-logo{font-size:34px!important}.err h2{font-size:26px!important;line-height:1.35!important}.err p{font-size:16px!important;line-height:1.9!important;color:#d7d7d7!important}
+  .center-controls{transform:translate(-50%,-50%) scale(.92)!important}.controls{border-radius:0!important}
+  .menu{width:calc(100vw - 28px)!important;max-height:58vh!important;overflow:auto!important}
 }
 </style>
 </body>
