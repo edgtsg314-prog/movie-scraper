@@ -277,7 +277,12 @@ async function start(){
     mediaResolve=d;
     subtitleOptions=Array.isArray(d.subtitles)?d.subtitles:[];
     const videos=Array.isArray(d.videos)?d.videos:[];
-    const ordered=orderedPlaybackUrls(videos,d.fallbackIframe||d.best);
+    let ordered=orderedPlaybackUrls(videos,d.fallbackIframe||d.best);
+    // On iPhone/Safari, provider MP4 files may fail because of codec/range/hotlink rules.
+    // If the resolver provides provider embeds, try them early as a reliable mobile fallback.
+    if((isIOS||isSafari) && Array.isArray(d.iosFallbacks)){
+      for(const u of d.iosFallbacks){ if(u && !ordered.includes(u)) ordered.push(u); }
+    }
     const first=ordered.shift();
     const backups=ordered;
     playSource(first,backups);
@@ -357,7 +362,8 @@ function playEmbed(url){
   v.style.display='none';
   embedFrame.style.display='block';
   embedFrame.src=url;
-  loader.style.display='none';
+  markReady();
+  setTimeout(()=>{ try{ markReady(); }catch(_){} },700);
   renderQualityMenu();
 }
 function playStream(raw, backups=[]){
@@ -378,7 +384,7 @@ function playStream(raw, backups=[]){
     if(next) return playSource(next, backups);
     showErr();
   };
-  failTimer=setTimeout(()=>tryNext('timeout'), isIOS ? 7000 : 12000);
+  failTimer=setTimeout(()=>tryNext('timeout'), isIOS ? 4200 : 10000);
 
   if(isDirectVideo){
     levels=[]; renderQualityMenu();

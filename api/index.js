@@ -274,6 +274,24 @@ async function getMediaResolve(id, season, episode) {
   if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
   const data = await res.json();
   const resolved = extractMediaResolve(data);
+  // iOS/Safari fallback: some MP4 signed sources are rejected by native Safari even when desktop works.
+  // Keep the normal direct resolver for desktop, but provide provider embed URLs as last-resort iOS fallback.
+  const safeId = encodeURIComponent(String(id));
+  const safeSeason = encodeURIComponent(String(season || 1));
+  const safeEpisode = encodeURIComponent(String(episode || 1));
+  const embedCandidates = season
+    ? [
+        `https://vidlink.pro/tv/${safeId}/${safeSeason}/${safeEpisode}`,
+        `https://vidlink.pro/embed/tv/${safeId}/${safeSeason}/${safeEpisode}`,
+        `https://vidlink.pro/embed/tv?tmdb=${safeId}&season=${safeSeason}&episode=${safeEpisode}`
+      ]
+    : [
+        `https://vidlink.pro/movie/${safeId}`,
+        `https://vidlink.pro/embed/movie/${safeId}`,
+        `https://vidlink.pro/embed/movie?tmdb=${safeId}`
+      ];
+  resolved.iosFallbacks = embedCandidates;
+  resolved.fallbackIframe = resolved.fallbackIframe || embedCandidates[0];
   if (!resolved.best && !resolved.videos.length && !resolved.fallbackIframe) {
     const body = JSON.stringify(data).slice(0, 900);
     throw new Error(`No playable source in response. keys=[${Object.keys(data || {}).join(', ')}] body=${body}`);
