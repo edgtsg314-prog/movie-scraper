@@ -66,41 +66,6 @@ async function getStream(id, season, episode) {
   return playlist;
 }
 
-
-async function getImdbIdForEmbed(tmdbId, season) {
-  // Build an extra backup embed from vidsrcme using the correct IMDb ID.
-  // For TV we use the show IMDb ID, then add season/episode in the embed URL.
-  try {
-    const endpoint = season ? `/tv/${tmdbId}/external_ids` : `/movie/${tmdbId}/external_ids`;
-    const data = await tmdbJson(endpoint);
-    const imdb = String(data?.imdb_id || '').trim();
-    return /^tt\d+/i.test(imdb) ? imdb : '';
-  } catch (_) {
-    return '';
-  }
-}
-
-async function buildExtraBackups(tmdbId, season, episode, directImdb) {
-  const imdb = /^tt\d+/i.test(String(directImdb||'')) ? String(directImdb).trim() : await getImdbIdForEmbed(tmdbId, season);
-  if (!imdb) return [];
-  if (season) {
-    return [`https://vidsrcme.ru/embed/tv?imdb=${encodeURIComponent(imdb)}&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}`];
-  }
-  return [`https://vidsrcme.ru/embed/movie?imdb=${encodeURIComponent(imdb)}`];
-}
-
-async function getStreamWithBackups(id, season, episode, imdb) {
-  const backup = await buildExtraBackups(id, season, episode, imdb);
-  try {
-    const url = await getStream(id, season, episode);
-    return { url, backup, source: 'vidlink' };
-  } catch (err) {
-    // If the main resolver/API fails before giving us an HLS URL, start directly with the backup embed.
-    if (backup.length) return { url: backup[0], backup: backup.slice(1), source: 'vidsrcme', primaryError: err.message };
-    throw err;
-  }
-}
-
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
 function fetchUpstream(url, redirects = 0) {
   return new Promise((resolve, reject) => {
@@ -175,27 +140,6 @@ async function tmdbJson(endpoint) {
   const r = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!r.ok) throw new Error(`TMDB ${r.status}`);
   return r.json();
-}
-
-
-async function resolveImdbToTmdb(imdbId, season) {
-  const imdb = String(imdbId || '').trim();
-  if (!/^tt\d+/i.test(imdb)) return '';
-  const data = await tmdbJson(`/find/${encodeURIComponent(imdb)}?external_source=imdb_id`);
-  const list = season ? (data.tv_results || []) : (data.movie_results || []);
-  const item = list[0] || (data.movie_results || [])[0] || (data.tv_results || [])[0];
-  return item && item.id ? String(item.id) : '';
-}
-
-async function normalizeWatchQuery(q) {
-  const season = q.s || q.season || '';
-  const episode = q.e || q.episode || '1';
-  let id = String(q.id || '').trim();
-  const imdb = String(q.imdb || '').trim();
-  if (!id && imdb) {
-    try { id = await resolveImdbToTmdb(imdb, season); } catch (_) {}
-  }
-  return { ...q, id, s: season, e: episode, imdb };
 }
 
 async function getMediaIdentifiers(tmdbId, season, episode) {
@@ -738,8 +682,7 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.end('ok');
 
   const { searchParams } = new URL(req.url, 'http://localhost');
-  let q = Object.fromEntries(searchParams);
-  q = await normalizeWatchQuery(q);
+  const q = Object.fromEntries(searchParams);
 
   // Live channels admin/list API
   if (q.live_list || q.live_admin) {
@@ -850,21 +793,15 @@ module.exports = async function handler(req, res) {
 
   // Stream lookup: /api?id=550  or  /api?id=456&s=1&e=2
   if (!q.id) {
-    res.setHeader('Content-Type', 'application/json');
-    if (/^tt\d+/i.test(String(q.imdb || ''))) {
-      const embed = q.s
-        ? `https://vidsrcme.ru/embed/tv?imdb=${encodeURIComponent(q.imdb)}&season=${encodeURIComponent(q.s)}&episode=${encodeURIComponent(q.e || 1)}`
-        : `https://vidsrcme.ru/embed/movie?imdb=${encodeURIComponent(q.imdb)}`;
-      return res.end(JSON.stringify({ url: embed, backup: [], source: 'vidsrcme-imdb-direct' }));
-    }
     res.statusCode = 400;
-    return res.end(JSON.stringify({ error: 'missing id or imdb' }));
+    res.setHeader('Content-Type', 'application/json');
+    return res.end(JSON.stringify({ error: 'missing id' }));
   }
 
   res.setHeader('Content-Type', 'application/json');
   try {
-    const data = await getStreamWithBackups(q.id, q.s, q.e, q.imdb);
-    res.end(JSON.stringify(data));
+    const url = await getStream(q.id, q.s, q.e);
+    res.end(JSON.stringify({ url }));
   } catch (err) {
     res.statusCode = 500;
     res.end(JSON.stringify({ error: err.message }));

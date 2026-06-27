@@ -86,7 +86,7 @@ video::cue{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif!im
 const TMDB_KEY='3a73619bbb8fc6d47742d1b5b2b707b5';
 const rawQuery=(location.search&&location.search.length>1)?location.search.slice(1):(location.pathname.startsWith('/id=')?location.pathname.slice(1):'');
 const p=new URLSearchParams(rawQuery);
-const id=p.get('id'), imdb=p.get('imdb'), s=p.get('s')||p.get('season'), e=p.get('e')||p.get('episode')||'1', live=p.get('live');
+const id=p.get('id'),s=p.get('s'),e=p.get('e')||'1', live=p.get('live');
 const v=document.getElementById('video'),embedFrame=document.getElementById('embedFrame'),loader=document.getElementById('loader'),app=document.getElementById('app');
 const nameEl=document.getElementById('name'),metaEl=document.getElementById('meta'),backdrop=document.getElementById('backdrop');
 const playBtn=document.getElementById('play'),big=document.getElementById('big'),rew=document.getElementById('rew'),fwd=document.getElementById('fwd'),mute=document.getElementById('mute'),vol=document.getElementById('vol');
@@ -97,17 +97,9 @@ let hls=null,levels=[],hideTimer=null,subtitleBlob=null,arabicTrack=null,arabicC
 const subtitleOverlay=document.getElementById('subtitleOverlay');
 const isIOS=/iPad|iPhone|iPod/.test(navigator.userAgent)||((navigator.platform==='MacIntel')&&navigator.maxTouchPoints>1);
 const isSafari=/^((?!chrome|android).)*safari/i.test(navigator.userAgent);
-const isLive=!!live; const mediaKey=id||imdb; const isTv=!!s&&!isLive; const storageKey='iptv-progress-'+(isLive?'live-'+live:(isTv?'tv-'+mediaKey+'-'+s+'-'+e:'movie-'+mediaKey)); selectedSubtitleChoice=Number(localStorage.getItem(storageKey+'-sub-choice')||0); subtitleOffset=Number(localStorage.getItem(storageKey+'-sub-offset')||0);
-
-function mediaApiBase(){
-  const qs=new URLSearchParams();
-  if(id) qs.set('id', id); else if(imdb) qs.set('imdb', imdb);
-  if(isTv){ qs.set('s', s); qs.set('e', e); }
-  return qs.toString();
-}
-
+const isLive=!!live; const isTv=!!s&&!isLive; const storageKey='iptv-progress-'+(isLive?'live-'+live:(isTv?'tv-'+id+'-'+s+'-'+e:'movie-'+id)); selectedSubtitleChoice=Number(localStorage.getItem(storageKey+'-sub-choice')||0); subtitleOffset=Number(localStorage.getItem(storageKey+'-sub-offset')||0);
 function buildWatchUrl(nextS,nextE){
-  const qs=new URLSearchParams(id?{id:String(id)}:{imdb:String(imdb)});
+  const qs=new URLSearchParams({id:String(id)});
   if(nextS) qs.set('s',String(nextS));
   if(nextE) qs.set('e',String(nextE));
   return location.pathname.startsWith('/id=') ? ('/id='+qs.toString()) : ('/?'+qs.toString());
@@ -126,7 +118,7 @@ function showUi(delay=3200){app.classList.remove('hidden-ui');clearTimeout(hideT
 function hideUi(){clearTimeout(hideTimer); if(!v.paused) app.classList.add('hidden-ui')}
 function setVisible(){showUi(3200)}
 ['mousemove','pointermove','touchstart','keydown'].forEach(ev=>addEventListener(ev,setVisible,{passive:true}));
-async function loadMeta(){if(isLive||(!id&&!imdb))return;try{let type=isTv?'tv':'movie';let tmdbId=id;if(!tmdbId&&imdb){let fr=await fetch(`https://api.themoviedb.org/3/find/${encodeURIComponent(imdb)}?api_key=${TMDB_KEY}&external_source=imdb_id`);let fd=await fr.json();let item=(isTv?(fd.tv_results||[]):(fd.movie_results||[]))[0]||(fd.movie_results||[])[0]||(fd.tv_results||[])[0];tmdbId=item&&item.id;}if(!tmdbId)return;let r=await fetch(`https://api.themoviedb.org/3/${type}/${tmdbId}?api_key=${TMDB_KEY}&language=ar-SA`);let d=await r.json();nameEl.textContent=d.title||d.name||'IPTV Expert';metaEl.textContent=(d.release_date||d.first_air_date||'').slice(0,4)+(isTv?` · موسم ${s} · حلقة ${e}`:' · فيلم');let img=d.backdrop_path||d.poster_path;if(img)backdrop.style.backgroundImage=`url(https://image.tmdb.org/t/p/original${img})`}catch(_){}}
+async function loadMeta(){if(isLive||!id)return;try{let type=isTv?'tv':'movie';let r=await fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_KEY}&language=ar-SA`);let d=await r.json();nameEl.textContent=d.title||d.name||'IPTV Expert';metaEl.textContent=(d.release_date||d.first_air_date||'').slice(0,4)+(isTv?` · موسم ${s} · حلقة ${e}`:' · فيلم');let img=d.backdrop_path||d.poster_path;if(img)backdrop.style.backgroundImage=`url(https://image.tmdb.org/t/p/original${img})`}catch(_){}}
 
 function parseVttCues(vtt){
   const toSec=(t)=>{
@@ -170,7 +162,7 @@ function enableArabicSubtitle(on=true){
 }
 async function loadSubtitleOptions(){
   try{
-    const url=`/api?subtitle_list=1&${mediaApiBase()}`;
+    const url=`/api?subtitle_list=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`;
     const r=await fetch(url,{cache:'no-store'});
     const d=await r.json().catch(()=>null);
     subtitleOptions=(d&&d.ok&&Array.isArray(d.subtitles))?d.subtitles:[];
@@ -192,7 +184,7 @@ async function fetchArabicSubtitle(choice=selectedSubtitleChoice){
     selectedSubtitleChoice=Number(choice||0);
     localStorage.setItem(storageKey+'-sub-choice',String(selectedSubtitleChoice));
     currentSubtitleLabel='العربية '+(selectedSubtitleChoice+1);
-    const url=`/api?subtitle=1&${mediaApiBase()}&choice=${encodeURIComponent(selectedSubtitleChoice)}&force=1`;
+    const url=`/api?subtitle=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}&choice=${encodeURIComponent(selectedSubtitleChoice)}&force=1`;
     const r=await fetch(url,{cache:'no-store'});
     const ct=(r.headers.get('content-type')||'').toLowerCase();
     if(!r.ok||!ct.includes('text/vtt')){
@@ -243,21 +235,20 @@ async function start(){
       return playSource(ch.url, ch.backup||[]);
     }catch(err){ return showErr(err.message); }
   }
-  if(!id&&!imdb){showErr('استخدم ?id=550 أو ?imdb=tt0111161 أو ?imdb=tt0944947&season=8&episode=6 أو ?live=channelId');return}
-  setupEpisodeNav();await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?${mediaApiBase()}`);const d=await r.json();if(d.error)throw new Error(d.error);playSource(d.url, Array.isArray(d.backup)?d.backup:[])}catch(err){showErr(err.message)}
+  if(!id){showErr('استخدم ?id=550 أو ?id=456&s=1&e=1 أو ?live=channelId');return}
+  setupEpisodeNav();await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playSource(d.url)}catch(err){showErr(err.message)}
 }
 function looksLikeEmbed(url){return !/\.(m3u8|mp4|m4v|webm|mov)(\?|#|$)/i.test(String(url||''));}
 function playSource(raw, backups=[]){
   if(!raw) return showErr('رابط التشغيل مفقود');
   const url=String(raw).trim();
-  if(looksLikeEmbed(url)) return playEmbed(url, backups);
+  if(looksLikeEmbed(url)) return playEmbed(url);
   return playStream(url, backups);
 }
-function playEmbed(url, backups=[]){
+function playEmbed(url){
   try{ if(hls){hls.destroy(); hls=null;} v.pause(); v.removeAttribute('src'); v.load(); }catch(_){ }
   v.style.display='none';
   embedFrame.style.display='block';
-  embedFrame.onerror=()=>{const next=backups.shift(); if(next) playSource(next,backups);};
   embedFrame.src=url;
   loader.style.display='none';
   renderQualityMenu();
