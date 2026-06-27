@@ -80,8 +80,8 @@ async function getImdbIdForEmbed(tmdbId, season) {
   }
 }
 
-async function buildExtraBackups(tmdbId, season, episode) {
-  const imdb = await getImdbIdForEmbed(tmdbId, season);
+async function buildExtraBackups(tmdbId, season, episode, directImdb) {
+  const imdb = /^tt\d+/i.test(String(directImdb||'')) ? String(directImdb).trim() : await getImdbIdForEmbed(tmdbId, season);
   if (!imdb) return [];
   if (season) {
     return [`https://vidsrcme.ru/embed/tv?imdb=${encodeURIComponent(imdb)}&season=${encodeURIComponent(season)}&episode=${encodeURIComponent(episode || 1)}`];
@@ -89,8 +89,8 @@ async function buildExtraBackups(tmdbId, season, episode) {
   return [`https://vidsrcme.ru/embed/movie?imdb=${encodeURIComponent(imdb)}`];
 }
 
-async function getStreamWithBackups(id, season, episode) {
-  const backup = await buildExtraBackups(id, season, episode);
+async function getStreamWithBackups(id, season, episode, imdb) {
+  const backup = await buildExtraBackups(id, season, episode, imdb);
   try {
     const url = await getStream(id, season, episode);
     return { url, backup, source: 'vidlink' };
@@ -175,6 +175,27 @@ async function tmdbJson(endpoint) {
   const r = await fetch(url, { headers: { 'User-Agent': UA } });
   if (!r.ok) throw new Error(`TMDB ${r.status}`);
   return r.json();
+}
+
+
+async function resolveImdbToTmdb(imdbId, season) {
+  const imdb = String(imdbId || '').trim();
+  if (!/^tt\d+/i.test(imdb)) return '';
+  const data = await tmdbJson(`/find/${encodeURIComponent(imdb)}?external_source=imdb_id`);
+  const list = season ? (data.tv_results || []) : (data.movie_results || []);
+  const item = list[0] || (data.movie_results || [])[0] || (data.tv_results || [])[0];
+  return item && item.id ? String(item.id) : '';
+}
+
+async function normalizeWatchQuery(q) {
+  const season = q.s || q.season || '';
+  const episode = q.e || q.episode || '1';
+  let id = String(q.id || '').trim();
+  const imdb = String(q.imdb || '').trim();
+  if (!id && imdb) {
+    try { id = await resolveImdbToTmdb(imdb, season); } catch (_) {}
+  }
+  return { ...q, id, s: season, e: episode, imdb };
 }
 
 async function getMediaIdentifiers(tmdbId, season, episode) {
@@ -717,7 +738,8 @@ module.exports = async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.end('ok');
 
   const { searchParams } = new URL(req.url, 'http://localhost');
-  const q = Object.fromEntries(searchParams);
+  let q = Object.fromEntries(searchParams);
+  q = await normalizeWatchQuery(q);
 
   // Live channels admin/list API
   if (q.live_list || q.live_admin) {
@@ -828,14 +850,20 @@ module.exports = async function handler(req, res) {
 
   // Stream lookup: /api?id=550  or  /api?id=456&s=1&e=2
   if (!q.id) {
-    res.statusCode = 400;
     res.setHeader('Content-Type', 'application/json');
-    return res.end(JSON.stringify({ error: 'missing id' }));
+    if (/^tt\d+/i.test(String(q.imdb || ''))) {
+      const embed = q.s
+        ? `https://vidsrcme.ru/embed/tv?imdb=${encodeURIComponent(q.imdb)}&season=${encodeURIComponent(q.s)}&episode=${encodeURIComponent(q.e || 1)}`
+        : `https://vidsrcme.ru/embed/movie?imdb=${encodeURIComponent(q.imdb)}`;
+      return res.end(JSON.stringify({ url: embed, backup: [], source: 'vidsrcme-imdb-direct' }));
+    }
+    res.statusCode = 400;
+    return res.end(JSON.stringify({ error: 'missing id or imdb' }));
   }
 
   res.setHeader('Content-Type', 'application/json');
   try {
-    const data = await getStreamWithBackups(q.id, q.s, q.e);
+    const data = await getStreamWithBackups(q.id, q.s, q.e, q.imdb);
     res.end(JSON.stringify(data));
   } catch (err) {
     res.statusCode = 500;
