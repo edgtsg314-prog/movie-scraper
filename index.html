@@ -90,7 +90,7 @@ body.is-loading .topbar, body.is-loading .controls, body.is-loading .center-cont
     <div class="row"><div class="left"><button class="ctrl" id="play">▶</button><button class="ctrl" id="mute">🔊</button><input class="vol" id="vol" type="range" min="0" max="1" step="0.01" value="1"><span class="time" id="time">0:00 / 0:00</span></div><div class="right"><button class="pill" id="quality">Auto</button><button class="pill cc" id="cc">CC</button><button class="ctrl" id="settings">⚙</button><button class="ctrl" id="pip">▣</button><button class="ctrl" id="full">⛶</button></div></div>
   </div>
   <div class="menu" id="menu"><h3>الإعدادات</h3><div id="menuItems"></div></div>
-  <div class="err" id="err"><h2>تعذر التشغيل</h2><p>جرّب لاحقًا أو جرّب رابطًا آخر.</p><pre id="errDetail"></pre></div>
+  <div class="err" id="err"><div class="err-card"><div class="err-logo">FilmVibe</div><h2>نعتذر، نواجه مشكلة مؤقتة في التشغيل</h2><p>أعد تحميل الصفحة أو جرّب مرة أخرى بعد قليل. إذا كان لديك سيرفر احتياطي سيحاول النظام استخدامه تلقائيًا.</p><pre id="errDetail"></pre><div class="err-actions"><button onclick="location.reload()">إعادة تحميل الصفحة</button><button onclick="history.back()">الرجوع</button></div></div></div>
 </div>
 <script>
 document.body.classList.add('is-loading');
@@ -125,7 +125,7 @@ function setupEpisodeNav(){
   nextEp.onclick=()=>{ location.href=buildWatchUrl(seasonNum, epNum+1); };
 }
 function fmt(t){t=Math.max(0,Math.floor(t||0));let h=Math.floor(t/3600),m=Math.floor((t%3600)/60),sec=t%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
-function showErr(msg){document.body.classList.remove('is-loading'); loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||''}
+function showErr(msg){document.body.classList.remove('is-loading'); loader.style.display='none';document.getElementById('err').style.display='flex';document.getElementById('errDetail').textContent=msg||'تعذر تجهيز مصدر الفيديو حاليًا.'}
 function markReady(){document.body.classList.remove('is-loading'); loader.style.display='none';}
 function showUi(delay=3200){app.classList.remove('hidden-ui');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!v.paused)app.classList.add('hidden-ui')},delay)}
 function hideUi(){clearTimeout(hideTimer); if(!v.paused) app.classList.add('hidden-ui')}
@@ -272,7 +272,7 @@ async function start(){
   setupEpisodeNav();
   loadMeta().catch(()=>{});
   try{
-    const d=await fetchJsonTimeout(`/api/resolve?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`,15000);
+    const d=await fetchJsonTimeout(`/api/resolve?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`, isIOS ? 8500 : 12000);
     if(d.error||d.ok===false)throw new Error(d.error||'تعذر حل مصدر التشغيل');
     mediaResolve=d;
     subtitleOptions=Array.isArray(d.subtitles)?d.subtitles:[];
@@ -286,7 +286,7 @@ async function start(){
 }
 function looksLikeEmbed(url){return !/\.(m3u8|mp4|m4v|webm|mov)(\?|#|$)/i.test(String(url||''));}
 function playSource(raw, backups=[]){
-  if(!raw) return showErr('رابط التشغيل مفقود');
+  if(!raw) return showErr('لا يوجد مصدر تشغيل متاح لهذا المحتوى حاليًا.');
   const url=String(raw).trim();
   if(looksLikeEmbed(url)) return playEmbed(url);
   return playStream(url, backups);
@@ -303,7 +303,7 @@ function playStream(raw, backups=[]){
   embedFrame.style.display='none'; embedFrame.removeAttribute('src'); v.style.display='block';
   if(hls){hls.destroy();hls=null}
   const originalRaw=String(raw||'').trim();
-  const src='/api?url='+encodeURIComponent(originalRaw);
+  const src=(isIOS||isSafari) ? originalRaw : ('/api?url='+encodeURIComponent(originalRaw));
   const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(originalRaw.split('?')[0]);
   let started=false;
   let failTimer=null;
@@ -313,9 +313,9 @@ function playStream(raw, backups=[]){
     clearStartGuards();
     const next=backups.shift();
     if(next) return playSource(next, backups);
-    showErr(msg||'تعذر تشغيل الفيديو. جرّب لاحقًا أو أضف سيرفر احتياطي.');
+    showErr(msg||'نعتذر، نواجه مشكلة مؤقتة في تشغيل هذا المصدر. أعد تحميل الصفحة أو جرّب لاحقًا.');
   };
-  failTimer=setTimeout(()=>tryNext('انتهت مهلة تجهيز الفيديو على هذا الجهاز'), 18000);
+  failTimer=setTimeout(()=>tryNext('استغرق تجهيز الفيديو وقتًا أطول من المتوقع'), isIOS ? 9000 : 13000);
 
   if(isDirectVideo){
     levels=[]; renderQualityMenu();
@@ -406,6 +406,32 @@ function renderSubtitleMenu(){
 addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();toggle()}if(e.code==='ArrowLeft')v.currentTime-=10;if(e.code==='ArrowRight')v.currentTime+=10;if(e.code==='KeyF')full.click();if(e.code==='KeyM')mute.click()});
 start();
 </script>
+
+<style id="filmvibe-mobile-polish-final">
+/* FilmVibe iPhone/mobile polish */
+body.is-loading #stage video, body.is-loading #embedFrame{opacity:0!important}
+.err{background:radial-gradient(circle at center,rgba(245,200,95,.08),#050505 55%)!important;padding:22px!important}
+.err-card{width:min(92vw,560px);border:1px solid rgba(255,255,255,.12);background:linear-gradient(180deg,rgba(22,22,24,.96),rgba(8,8,10,.96));border-radius:28px;padding:30px 22px;box-shadow:0 24px 90px rgba(0,0,0,.65);display:flex;align-items:center;flex-direction:column;gap:12px}
+.err-logo{font-size:34px;font-weight:1000;background:linear-gradient(90deg,#fff,#f2c45b,#ff3b2f);-webkit-background-clip:text;background-clip:text;color:transparent}
+.err h2{font-size:clamp(23px,5vw,34px)!important;line-height:1.25;margin:0}.err p{max-width:520px;color:#d6d6d6;line-height:1.8;font-size:15px}.err pre{direction:rtl!important;text-align:center!important;max-width:100%!important;font-family:inherit!important;background:rgba(255,255,255,.055)!important;border-color:rgba(255,255,255,.1)!important;color:#bbb!important;max-height:90px;overflow:hidden}.err-actions{display:flex;gap:10px;flex-wrap:wrap;justify-content:center;margin-top:4px}.err-actions button{padding:12px 18px;border-radius:999px;background:#f5c85f;color:#111;font-weight:900;border:0}.err-actions button+button{background:rgba(255,255,255,.1);color:#fff;border:1px solid rgba(255,255,255,.12)}
+@media(max-width:760px){
+  html,body,#app{background:#05070b!important}
+  .topbar{height:58px!important;background:linear-gradient(180deg,rgba(0,0,0,.64),rgba(0,0,0,0))!important}
+  .title{display:none!important}
+  .top-actions{top:10px!important;left:12px!important;padding:6px 8px!important;gap:4px!important;border-radius:20px!important;background:rgba(20,20,22,.72)!important;transform:scale(.92);transform-origin:left top}
+  .tool{width:34px!important;height:34px!important;font-size:18px!important}
+  #stage{inset:0!important;border-radius:0!important;overflow:hidden!important}
+  video,#embedFrame{width:100%!important;height:100%!important;object-fit:contain!important}
+  .center-controls{gap:18px!important}.bigplay{width:70px!important;height:70px!important;font-size:28px!important}.skip{width:52px!important;height:52px!important;font-size:14px!important}
+  .controls{padding-left:12px!important;padding-right:12px!important;padding-bottom:calc(12px + var(--safe-bottom))!important;background:linear-gradient(180deg,rgba(0,0,0,0),rgba(0,0,0,.96))!important}
+  .progress-wrap{height:28px!important}.row{height:48px!important}.ctrl{width:42px!important;height:42px!important;font-size:18px!important}.time{font-size:12px!important;min-width:98px!important;margin-inline-start:8px!important}.vol{display:none!important}
+  #subtitleOverlay{font-size:20px!important;bottom:calc(92px + var(--safe-bottom))!important;max-width:92vw!important}
+  .loader{background:radial-gradient(circle at center,rgba(245,200,95,.11),#000 48%,#000 100%)!important}.loader-brand{font-size:32px!important}.spin{width:42px!important;height:42px!important}
+}
+@media(max-width:760px) and (orientation:portrait){
+  .center-controls{top:50%!important}
+}
+</style>
 </body>
 </html>
 
