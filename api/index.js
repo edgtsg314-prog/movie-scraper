@@ -154,6 +154,9 @@ function addVideoSource(out, url, opts = {}) {
   if (!url || typeof url !== 'string' || !/^https?:\/\//i.test(url)) return;
   const type = detectMediaType(url, opts.type);
   if (type === 'iframe') return;
+  const clean = String(url).split('?')[0].toLowerCase();
+  // Never treat provider/player pages as native video sources. This prevents iPhone from opening VidSrc/VidSec players.
+  if (type === 'unknown' && /(vidsrc|vidsec|vidlink|embed|player|watch)/i.test(clean) && !/\.(m3u8|mp4|m4v|mov|webm|mpd)$/i.test(clean)) return;
   if (out._seenVideos.has(url)) return;
   out._seenVideos.add(url);
   const quality = normalizeQuality(opts.quality || opts.label || opts.height);
@@ -1044,6 +1047,13 @@ module.exports = async function handler(req, res) {
       const ct = contentTypeForUrl(url, upstream.headers['content-type'] || '').toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
 
+      const isHtml = ct.includes('text/html') || ct.includes('application/xhtml') || ct.includes('text/plain') && /(vidsrc|vidsec|vidlink|embed|player|watch)/i.test(url);
+      if (isHtml) {
+        try { upstream.resume(); } catch (_) {}
+        res.statusCode = 415;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        return res.end(JSON.stringify({ ok:false, error:'not a native playable video source' }));
+      }
       if (isM3u8) {
         const chunks = [];
         for await (const chunk of upstream) chunks.push(chunk);
@@ -1054,6 +1064,7 @@ module.exports = async function handler(req, res) {
         return res.end(rewriteM3u8(body, url));
       } else {
         res.setHeader('Content-Type', ct || 'application/octet-stream');
+        res.setHeader('Content-Disposition','inline');
         res.setHeader('X-Content-Type-Options','nosniff');
         res.setHeader('Access-Control-Allow-Origin','*');
         res.setHeader('Accept-Ranges','bytes');

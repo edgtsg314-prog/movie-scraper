@@ -311,7 +311,20 @@ function looksLikeEmbed(url){
 function sourceUrl(item){
   if(!item)return '';
   if(typeof item==='string') return item;
-  return item.playUrl||item.proxiedUrl||item.url||item.best||'';
+  // Keep the original provider URL for validation. proxiedUrl is only a transport wrapper.
+  return item.url||item.best||item.playUrl||item.proxiedUrl||'';
+}
+function isNativePlayableItem(item){
+  const raw=sourceUrl(item);
+  const type=String(item?.type||'').toLowerCase();
+  const clean=unwrapProxyUrl(raw).split('?')[0].toLowerCase();
+  if(type==='iframe'||type==='embed') return false;
+  if(type==='hls'||type==='mp4'||type==='webm'||type==='dash') return true;
+  if(/\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(clean)) return true;
+  // Block known provider/player pages. These cause Safari to show VidSrc/VidSec or ads.
+  if(/(vidsrc|vidsec|vidlink|embed|player|watch)/i.test(clean) && !/\.(m3u8|mp4|m4v|webm|mov|mpd)/i.test(clean)) return false;
+  // Unknown CDN signed URLs may still be direct video; allow only through proxy, which rejects HTML.
+  return /^https?:\/\//i.test(raw);
 }
 function scoreForDevice(item){
   const type=String(item?.type||'').toLowerCase();
@@ -333,19 +346,18 @@ function scoreForDevice(item){
   return 8000 + q;
 }
 function orderedPlaybackUrls(videos, fallback){
-  const arr=(Array.isArray(videos)?videos:[]).slice().filter(x=>sourceUrl(x));
+  const arr=(Array.isArray(videos)?videos:[]).slice().filter(x=>sourceUrl(x)&&isNativePlayableItem(x));
   arr.sort((a,b)=>scoreForDevice(b)-scoreForDevice(a));
   const out=[];
   for(const item of arr){
-    if(String(item?.type||'').toLowerCase()==='iframe') continue;
     const raw=sourceUrl(item);
-    if(looksLikeEmbed(raw)) continue;
-    const prox=sameOriginProxyUrl(item?.url||raw);
+    if(looksLikeEmbed(raw) && !/\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(unwrapProxyUrl(raw).split('?')[0])) continue;
+    const prox=sameOriginProxyUrl(raw);
     if(prox&&!out.includes(prox)) out.push(prox);
-    // Direct URL fallback after same-origin proxy. Some iPhone CDNs play direct faster than through Node proxy.
-    if(item?.url && !looksLikeEmbed(item.url) && !out.includes(item.url)) out.push(item.url);
+    // Do not add direct provider pages on iPhone. Direct fallback is safe only for clearly playable file URLs.
+    if(item?.url && /\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(item.url.split('?')[0]) && !out.includes(item.url)) out.push(item.url);
   }
-  if(fallback && !looksLikeEmbed(fallback) && !out.includes(fallback)) out.push(fallback);
+  if(fallback && !looksLikeEmbed(fallback) && !out.includes(fallback)) out.push(sameOriginProxyUrl(fallback));
   return out;
 }
 function playSource(raw, backups=[]){
