@@ -286,11 +286,12 @@ async function start(){
   }catch(err){showErr(err.message)}
 }
 
-function sameOriginProxyUrl(url){
+function sameOriginProxyUrl(url,type){
   const u=String(url||'').trim();
   if(!u)return '';
   if(u.startsWith('/api?url=')||u.startsWith('/api/')) return u;
-  return '/api?url='+encodeURIComponent(u);
+  const t=String(type||'').toLowerCase();
+  return '/api?url='+encodeURIComponent(u)+(t?'&media_type='+encodeURIComponent(t):'');
 }
 function unwrapProxyUrl(url){
   const u=String(url||'').trim();
@@ -351,13 +352,15 @@ function orderedPlaybackUrls(videos, fallback){
   const out=[];
   for(const item of arr){
     const raw=sourceUrl(item);
-    if(looksLikeEmbed(raw) && !/\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(unwrapProxyUrl(raw).split('?')[0])) continue;
-    const prox=sameOriginProxyUrl(raw);
+    const t=String(item?.type||'').toLowerCase();
+    // Allow signed CDN URLs without .mp4/.m3u8 when resolver already identified the type.
+    if(looksLikeEmbed(raw) && !['hls','mp4','webm','dash'].includes(t) && !/\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(unwrapProxyUrl(raw).split('?')[0])) continue;
+    const prox=sameOriginProxyUrl(raw,t);
     if(prox&&!out.includes(prox)) out.push(prox);
-    // Do not add direct provider pages on iPhone. Direct fallback is safe only for clearly playable file URLs.
-    if(item?.url && /\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(item.url.split('?')[0]) && !out.includes(item.url)) out.push(item.url);
+    // Never add raw provider URLs on iPhone. Proxy keeps Range/CORS/Content-Type stable for Safari.
+    if(!isIOS && item?.url && /\.(m3u8|mp4|m4v|webm|mov|mpd)(\?|#|$)/i.test(item.url.split('?')[0]) && !out.includes(item.url)) out.push(item.url);
   }
-  if(fallback && !looksLikeEmbed(fallback) && !out.includes(fallback)) out.push(sameOriginProxyUrl(fallback));
+  if(fallback && !out.includes(fallback)) out.push(sameOriginProxyUrl(fallback));
   return out;
 }
 function playSource(raw, backups=[]){
@@ -375,9 +378,11 @@ function playStream(raw, backups=[]){
   if(hls){hls.destroy();hls=null}
   const originalRaw=String(raw||'').trim();
   const rawForType=unwrapProxyUrl(originalRaw);
-  const src= originalRaw.startsWith('/api?url=') ? originalRaw : sameOriginProxyUrl(originalRaw);
-  const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(rawForType.split('?')[0]);
-  const isHls=/\.m3u8(\?|#|$)/i.test(rawForType.split('?')[0]);
+  let mediaTypeHint='';
+  try{ mediaTypeHint=new URL(originalRaw, location.origin).searchParams.get('media_type')||''; }catch(_){}
+  const src= originalRaw.startsWith('/api?url=') ? originalRaw : sameOriginProxyUrl(originalRaw,mediaTypeHint);
+  const isDirectVideo=/^(mp4|webm|mov|m4v)$/i.test(mediaTypeHint)||/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(rawForType.split('?')[0]);
+  const isHls=/^hls$/i.test(mediaTypeHint)||/\.m3u8(\?|#|$)/i.test(rawForType.split('?')[0]);
   let started=false;
   let failTimer=null;
   const clearStartGuards=()=>{started=true; if(failTimer) clearTimeout(failTimer); failTimer=null;};

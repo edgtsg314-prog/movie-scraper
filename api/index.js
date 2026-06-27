@@ -302,7 +302,12 @@ function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
 }
 
 
-function contentTypeForUrl(url, upstreamType) {
+function contentTypeForUrl(url, upstreamType, mediaTypeHint) {
+  const hint = String(mediaTypeHint || '').toLowerCase();
+  if (hint === 'hls') return 'application/vnd.apple.mpegurl';
+  if (hint === 'mp4') return 'video/mp4';
+  if (hint === 'webm') return 'video/webm';
+  if (hint === 'dash') return 'application/dash+xml';
   const ct = String(upstreamType || '').toLowerCase();
   const clean = String(url || '').split('?')[0].toLowerCase();
   if (ct && !ct.includes('octet-stream') && !ct.includes('binary')) return ct;
@@ -1044,7 +1049,7 @@ module.exports = async function handler(req, res) {
         try { upstream.resume(); } catch (_) {}
         upstream = await fetchUpstream(url, 0, { ...(rangeHeader ? { Range: rangeHeader } : {}), 'User-Agent': isMobileSafari ? IOS_UA : BROWSER_UA, Referer: new URL(url).origin + '/', Origin: new URL(url).origin });
       }
-      const ct = contentTypeForUrl(url, upstream.headers['content-type'] || '').toLowerCase();
+      const ct = contentTypeForUrl(url, upstream.headers['content-type'] || '', q.media_type).toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
 
       const isHtml = ct.includes('text/html') || ct.includes('application/xhtml') || ct.includes('text/plain') && /(vidsrc|vidsec|vidlink|embed|player|watch)/i.test(url);
