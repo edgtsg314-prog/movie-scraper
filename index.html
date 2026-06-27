@@ -130,6 +130,18 @@ function markReady(){document.body.classList.remove('is-loading'); loader.style.
 function showUi(delay=3200){app.classList.remove('hidden-ui');clearTimeout(hideTimer);hideTimer=setTimeout(()=>{if(!v.paused)app.classList.add('hidden-ui')},delay)}
 function hideUi(){clearTimeout(hideTimer); if(!v.paused) app.classList.add('hidden-ui')}
 function setVisible(){showUi(3200)}
+
+function fetchJsonTimeout(url, ms=15000){
+  const controller=new AbortController();
+  const timer=setTimeout(()=>controller.abort(),ms);
+  return fetch(url,{cache:'no-store',signal:controller.signal}).finally(()=>clearTimeout(timer)).then(async r=>{
+    const text=await r.text();
+    let data=null;
+    try{ data=text?JSON.parse(text):null; }catch(_){ throw new Error('رد غير صالح من السيرفر'); }
+    if(!r.ok) throw new Error((data&&data.error)||('HTTP '+r.status));
+    return data;
+  });
+}
 ['mousemove','pointermove','touchstart','keydown'].forEach(ev=>addEventListener(ev,setVisible,{passive:true}));
 async function loadMeta(){if(isLive||!id)return;try{let type=isTv?'tv':'movie';let r=await fetch(`https://api.themoviedb.org/3/${type}/${id}?api_key=${TMDB_KEY}&language=ar-SA`);let d=await r.json();nameEl.textContent=d.title||d.name||'IPTV Expert';metaEl.textContent=(d.release_date||d.first_air_date||'').slice(0,4)+(isTv?` · موسم ${s} · حلقة ${e}`:' · فيلم');let img=d.backdrop_path||d.poster_path;if(img)backdrop.style.backgroundImage=`url(https://image.tmdb.org/t/p/original${img})`}catch(_){}}
 
@@ -258,10 +270,9 @@ async function start(){
   }
   if(!id){showErr('استخدم ?id=550 أو ?id=456&s=1&e=1 أو ?live=channelId');return}
   setupEpisodeNav();
-  await loadMeta();
+  loadMeta().catch(()=>{});
   try{
-    const r=await fetch(`/api?resolve=1&id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`,{cache:'no-store'});
-    const d=await r.json();
+    const d=await fetchJsonTimeout(`/api/resolve?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`,15000);
     if(d.error||d.ok===false)throw new Error(d.error||'تعذر حل مصدر التشغيل');
     mediaResolve=d;
     subtitleOptions=Array.isArray(d.subtitles)?d.subtitles:[];
@@ -291,31 +302,50 @@ function playEmbed(url){
 function playStream(raw, backups=[]){
   embedFrame.style.display='none'; embedFrame.removeAttribute('src'); v.style.display='block';
   if(hls){hls.destroy();hls=null}
-  const src='/api?url='+encodeURIComponent(raw);
-  const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(String(raw||''));
+  const originalRaw=String(raw||'').trim();
+  const src='/api?url='+encodeURIComponent(originalRaw);
+  const isDirectVideo=/\.(mp4|m4v|webm|mov)(\?|#|$)/i.test(originalRaw.split('?')[0]);
+  let started=false;
+  let failTimer=null;
+  const clearStartGuards=()=>{started=true; if(failTimer) clearTimeout(failTimer); failTimer=null;};
+  const tryNext=(msg)=>{
+    if(started) return;
+    clearStartGuards();
+    const next=backups.shift();
+    if(next) return playSource(next, backups);
+    showErr(msg||'تعذر تشغيل الفيديو. جرّب لاحقًا أو أضف سيرفر احتياطي.');
+  };
+  failTimer=setTimeout(()=>tryNext('انتهت مهلة تجهيز الفيديو على هذا الجهاز'), 18000);
+
   if(isDirectVideo){
     levels=[]; renderQualityMenu();
     v.src=src;
-    v.addEventListener('canplay',markReady,{once:true});
-    v.addEventListener('playing',markReady,{once:true});
-    v.addEventListener('loadedmetadata',()=>{markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
-    v.addEventListener('error',()=>{const next=backups.shift(); if(next) return playSource(next,backups); showErr('تعذر تشغيل ملف الفيديو المباشر')},{once:true});
+    v.addEventListener('canplay',()=>{clearStartGuards();markReady();},{once:true});
+    v.addEventListener('playing',()=>{clearStartGuards();markReady();},{once:true});
+    v.addEventListener('loadedmetadata',()=>{clearStartGuards();markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('error',()=>tryNext('تعذر تشغيل ملف الفيديو المباشر'),{once:true});
+    v.load();
+    // iPhone sometimes needs an explicit play after metadata if user tapped play.
+    setTimeout(()=>{ if(!started && !v.error) v.play().catch(()=>{}); }, 1200);
     return;
   }
-  if(Hls.isSupported()){
-    hls=new Hls({enableWorker:true,lowLatencyMode:false});
+  if(window.Hls && Hls.isSupported()){
+    hls=new Hls({enableWorker:true,lowLatencyMode:false,manifestLoadingTimeOut:12000,levelLoadingTimeOut:12000,fragLoadingTimeOut:15000});
     hls.loadSource(src); hls.attachMedia(v);
-    hls.on(Hls.Events.MANIFEST_PARSED,()=>{levels=hls.levels||[];markReady();restoreProgress();v.play().catch(()=>{});renderQualityMenu()});
-    hls.on(Hls.Events.FRAG_BUFFERED,()=>markReady());
-    hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal){const next=backups.shift(); if(next) return playSource(next,backups); showErr(data.details||'HLS error')}})
+    hls.on(Hls.Events.MANIFEST_PARSED,()=>{clearStartGuards();levels=hls.levels||[];markReady();restoreProgress();v.play().catch(()=>{});renderQualityMenu()});
+    hls.on(Hls.Events.FRAG_BUFFERED,()=>{clearStartGuards();markReady();});
+    hls.on(Hls.Events.ERROR,(_,data)=>{console.warn('HLS error',data);if(data.fatal){try{hls.destroy()}catch(_){} hls=null; return tryNext(data.details||'HLS error')}})
   }else if(v.canPlayType('application/vnd.apple.mpegurl')){
     v.src=src;
-    v.addEventListener('canplay',markReady,{once:true});
-    v.addEventListener('playing',markReady,{once:true});
-    v.addEventListener('loadedmetadata',()=>{markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
-    v.addEventListener('error',()=>{const next=backups.shift(); if(next) return playSource(next,backups); showErr('تعذر تشغيل HLS')},{once:true});
-  }else showErr('المتصفح لا يدعم HLS')
+    v.addEventListener('canplay',()=>{clearStartGuards();markReady();},{once:true});
+    v.addEventListener('playing',()=>{clearStartGuards();markReady();},{once:true});
+    v.addEventListener('loadedmetadata',()=>{clearStartGuards();markReady();restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('error',()=>tryNext('تعذر تشغيل HLS'),{once:true});
+    v.load();
+    setTimeout(()=>{ if(!started && !v.error) v.play().catch(()=>{}); }, 1200);
+  }else tryNext('المتصفح لا يدعم HLS')
 }
+
 
 function restoreProgress(){let t=Number(localStorage.getItem(storageKey)||0);if(t>20&&isFinite(t))v.currentTime=t}
 setInterval(()=>{if(v.currentTime>5)localStorage.setItem(storageKey,String(v.currentTime))},2500);

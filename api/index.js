@@ -16,6 +16,22 @@ const OS_USERNAME = process.env.OPENSUBTITLES_USERNAME || 'adwameshari';
 const OS_PASSWORD = process.env.OPENSUBTITLES_PASSWORD || 'MESHARI';
 const OS_USER_AGENT = process.env.OPENSUBTITLES_USER_AGENT || 'IPTVExpert v1.0';
 
+
+const RESOLVE_TIMEOUT_MS = Number(process.env.RESOLVE_TIMEOUT_MS || 12000);
+const UPSTREAM_TIMEOUT_MS = Number(process.env.UPSTREAM_TIMEOUT_MS || 15000);
+const SUBTITLE_TIMEOUT_MS = Number(process.env.SUBTITLE_TIMEOUT_MS || 9000);
+
+function fetchWithTimeout(url, options = {}, timeoutMs = RESOLVE_TIMEOUT_MS) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+function normalizeApiPath(reqUrl) {
+  const u = new URL(reqUrl, 'http://localhost');
+  return u.pathname.replace(/\/+$/, '') || '/';
+}
+
 let osToken = null;
 let osTokenAt = 0;
 
@@ -253,7 +269,7 @@ async function getMediaResolve(id, season, episode) {
   const apiUrl = season
     ? `https://vidlink.pro/api/b/tv/${token}/${season}/${episode || 1}?multiLang=0`
     : `https://vidlink.pro/api/b/movie/${token}?multiLang=0`;
-  const res = await fetch(apiUrl, { headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA } });
+  const res = await fetchWithTimeout(apiUrl, { headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: 'application/json,*/*' } }, RESOLVE_TIMEOUT_MS);
   if (!res.ok) throw new Error(`vidlink API returned ${res.status}`);
   const data = await res.json();
   const resolved = extractMediaResolve(data);
@@ -269,15 +285,20 @@ async function getMediaResolve(id, season, episode) {
 function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error('too many redirects'));
-    (url.startsWith('https') ? https : http).get(url, {
-      headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*', ...extraHeaders }
+    const client = url.startsWith('https') ? https : http;
+    const req = client.get(url, {
+      headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*', ...extraHeaders },
+      timeout: UPSTREAM_TIMEOUT_MS
     }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
         const loc = res.headers.location;
         return resolve(fetchUpstream(loc.startsWith('http') ? loc : new URL(loc, url).href, redirects + 1, extraHeaders));
       }
       resolve(res);
-    }).on('error', reject);
+    });
+    req.on('timeout', () => req.destroy(new Error('upstream timeout')));
+    req.on('error', reject);
   });
 }
 
@@ -336,7 +357,7 @@ function srtToVtt(srt) {
 async function tmdbJson(endpoint) {
   const sep = endpoint.includes('?') ? '&' : '?';
   const url = `https://api.themoviedb.org/3${endpoint}${sep}api_key=${encodeURIComponent(TMDB_KEY)}`;
-  const r = await fetch(url, { headers: { 'User-Agent': UA } });
+  const r = await fetchWithTimeout(url, { headers: { 'User-Agent': UA } }, 9000);
   if (!r.ok) throw new Error(`TMDB ${r.status}`);
   return r.json();
 }
@@ -389,7 +410,7 @@ function imdbVariants(imdbId) {
 async function osLogin() {
   if (osToken && Date.now() - osTokenAt < 1000 * 60 * 60 * 20) return osToken;
   if (!OS_API_KEY || !OS_USERNAME || !OS_PASSWORD) throw new Error('OpenSubtitles credentials missing');
-  const r = await fetch('https://api.opensubtitles.com/api/v1/login', {
+  const r = await fetchWithTimeout('https://api.opensubtitles.com/api/v1/login', {
     method: 'POST',
     headers: {
       'Api-Key': OS_API_KEY,
@@ -398,7 +419,7 @@ async function osLogin() {
       'Accept': 'application/json'
     },
     body: JSON.stringify({ username: OS_USERNAME, password: OS_PASSWORD })
-  });
+  }, SUBTITLE_TIMEOUT_MS);
   const text = await r.text();
   if (!r.ok) throw new Error(`OpenSubtitles login ${r.status}: ${text.slice(0, 160)}`);
   const data = JSON.parse(text);
@@ -415,14 +436,14 @@ async function osSearchArabicOnce(params) {
     if (v !== undefined && v !== null && String(v).trim() !== '') qs.set(k, String(v));
   }
   const url = `https://api.opensubtitles.com/api/v1/subtitles?${qs.toString()}`;
-  const r = await fetch(url, {
+  const r = await fetchWithTimeout(url, {
     headers: {
       'Api-Key': OS_API_KEY,
       'Authorization': `Bearer ${token}`,
       'User-Agent': OS_USER_AGENT,
       'Accept': 'application/json'
     }
-  });
+  }, SUBTITLE_TIMEOUT_MS);
   const text = await r.text();
   if (!r.ok) throw new Error(`OpenSubtitles search ${r.status}: ${text.slice(0, 220)}`);
   const data = JSON.parse(text);
@@ -886,6 +907,13 @@ module.exports = async function handler(req, res) {
 
   const { searchParams } = new URL(req.url, 'http://localhost');
   const q = Object.fromEntries(searchParams);
+  const apiPath = normalizeApiPath(req.url);
+  if (apiPath === '/api/resolve') q.resolve = q.resolve || '1';
+  if (apiPath === '/api/health') {
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    return res.end(JSON.stringify({ ok: true, service: 'FilmVibe resolver', time: new Date().toISOString() }));
+  }
 
   // Live channels admin/list API
   if (q.live_list || q.live_admin) {
@@ -971,7 +999,7 @@ module.exports = async function handler(req, res) {
   if (q.subtitle_url) {
     const url = decodeURIComponent(q.subtitle_url);
     try {
-      const upstream = await fetch(url, { headers: { 'User-Agent': BROWSER_UA, Referer: REFERER, Origin: ORIGIN, Accept: '*/*' } });
+      const upstream = await fetchWithTimeout(url, { headers: { 'User-Agent': BROWSER_UA, Referer: REFERER, Origin: ORIGIN, Accept: '*/*' } }, SUBTITLE_TIMEOUT_MS);
       const text = await upstream.text();
       if (!upstream.ok) throw new Error(`subtitle upstream ${upstream.status}`);
       const clean = /^WEBVTT/i.test(text.trim()) ? text : srtToVtt(text);

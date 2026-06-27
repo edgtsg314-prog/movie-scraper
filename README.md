@@ -1,29 +1,33 @@
-# IPTV Expert Player + Live Links
+# FilmVibe Player Fix
 
-تشغيل:
-
+## التشغيل
 ```bash
 npm install
 npm start
 ```
 
-المشغل:
-
+افتح:
 ```text
-http://localhost:8090/?id=550
-http://localhost:8090/?id=1396&s=1&e=1
+http://localhost:8090/?id=1301421
 ```
 
-إدارة روابط البث المباشر:
-
+للجوال على نفس الشبكة:
 ```text
-http://localhost:8090/live-admin.html
+http://YOUR_PC_IP:8090/?id=1301421
 ```
 
-أضف القناة ورابطها الحقيقي، وسيولد النظام رابطًا مختصرًا مثل:
-
+## فحص سريع
 ```text
-http://localhost:8090/?live=beIN-sports-abc123
+/api/health
+/api/resolve?id=1301421
+/api?resolve=1&id=1301421
 ```
 
-المستخدم لا يرى الرابط الحقيقي، ويستطيع المشغل فتح M3U8/MP4 أو Embed حسب نوع الرابط.
+## أهم التعديلات
+- إضافة مسار ثابت `/api/resolve` بجانب `/api?resolve=1`.
+- Timeout للفيديو حتى لا يبقى الجوال عالقًا على شاشة التحميل.
+- Timeout لمزود VidLink و OpenSubtitles.
+- التشغيل يبدأ بدون انتظار الترجمة.
+- الترجمة تعمل كـ WebVTT `<track>` لدعم iPhone Full Screen.
+- تحسين Proxy الفيديو مع Range/CORS.
+- شاشة تحميل نظيفة بدون أزرار.
