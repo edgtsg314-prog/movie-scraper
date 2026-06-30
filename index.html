@@ -81,7 +81,7 @@ body.is-loading .topbar, body.is-loading .controls, body.is-loading .center-cont
     </div>
     <div class="title"><h1 id="name">IPTV Expert</h1><p id="meta"></p></div>
   </div>
-  <div id="stage"><video id="video" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video></div><div id="subtitleOverlay"></div>
+  <div id="stage"><video id="video" playsinline webkit-playsinline preload="metadata" ></video></div><div id="subtitleOverlay"></div>
   <div id="loader" class="loader"><div class="loader-brand">FilmVibe</div><div class="spin"></div><small id="loadtext">جاري تجهيز التشغيل...</small></div>
   <div class="center-controls" id="centerControls"><button class="skip" id="rew">↶ 10</button><button class="bigplay" id="big">▶</button><button class="skip" id="fwd">10 ↷</button></div>
   <div class="episode-nav" id="episodeNav"><button class="episode-btn" id="prevEp">الحلقة السابقة</button><button class="episode-btn" id="nextEp">الحلقة التالية</button></div>
@@ -393,7 +393,7 @@ function playStream(raw, backups=[]){
     if(next) return playSource(next, backups);
     showErr();
   };
-  failTimer=setTimeout(()=>tryNext('timeout'), isIOS ? 7000 : 10000);
+  failTimer=setTimeout(()=>tryNext('timeout'), (isIOS||isSafari) ? 18000 : 12000);
 
   if(isDirectVideo){
     levels=[]; renderQualityMenu();
@@ -407,8 +407,17 @@ function playStream(raw, backups=[]){
     setTimeout(()=>{ if(!started && !v.error) v.play().catch(()=>{}); }, 1200);
     return;
   }
-  if(window.Hls && Hls.isSupported()){
-    hls=new Hls({enableWorker:true,lowLatencyMode:false,manifestLoadingTimeOut:12000,levelLoadingTimeOut:12000,fragLoadingTimeOut:15000});
+  if((isIOS||isSafari) && v.canPlayType('application/vnd.apple.mpegurl')){
+    // Safari/iPhone plays HLS natively. This is more stable than forcing hls.js on mobile WebKit.
+    v.src=src;
+    v.addEventListener('canplay',()=>{clearStartGuards();markReady();},{once:true});
+    v.addEventListener('playing',()=>{clearStartGuards();markReady();},{once:true});
+    v.addEventListener('loadedmetadata',()=>{restoreProgress();v.play().catch(()=>{})},{once:true});
+    v.addEventListener('error',()=>tryNext('hls-error'),{once:true});
+    v.load();
+    setTimeout(()=>{ if(!started && !v.error) v.play().catch(()=>{}); }, 1500);
+  }else if(window.Hls && Hls.isSupported()){
+    hls=new Hls({enableWorker:true,lowLatencyMode:false,manifestLoadingTimeOut:16000,levelLoadingTimeOut:16000,fragLoadingTimeOut:20000});
     hls.loadSource(src); hls.attachMedia(v);
     hls.on(Hls.Events.MANIFEST_PARSED,()=>{clearStartGuards();levels=hls.levels||[];markReady();restoreProgress();v.play().catch(()=>{});renderQualityMenu()});
     hls.on(Hls.Events.FRAG_BUFFERED,()=>{clearStartGuards();markReady();});

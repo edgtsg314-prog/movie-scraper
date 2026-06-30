@@ -319,15 +319,34 @@ function contentTypeForUrl(url, upstreamType, mediaTypeHint) {
   return ct || 'application/octet-stream';
 }
 
+function proxifyMediaUrl(abs, hint = '') {
+  return '/api?url=' + encodeURIComponent(abs) + (hint ? '&media_type=' + encodeURIComponent(hint) : '');
+}
+
+function resolveRelativeMediaUrl(value, playlistUrl) {
+  try { return new URL(String(value || '').trim(), playlistUrl).href; } catch (_) { return String(value || '').trim(); }
+}
+
 function rewriteM3u8(body, url) {
-  const base = url.split('?')[0];
-  const baseDir = base.substring(0, base.lastIndexOf('/') + 1);
-  const origin = new URL(url).origin;
-  return body.split('\n').map(line => {
+  // iPhone/Safari is stricter than desktop browsers: every segment, nested playlist,
+  // encryption key and EXT-X-MAP URI must go through our same-origin proxy.
+  return String(body || '').replace(/\r\n/g, '\n').split('\n').map(line => {
+    const original = line;
     const t = line.trim();
-    if (!t || t.startsWith('#')) return line;
-    const abs = t.startsWith('http') ? t : t.startsWith('/') ? origin + t : baseDir + t;
-    return '/api?url=' + encodeURIComponent(abs);
+    if (!t) return original;
+
+    // Rewrite URI="..." inside tags like EXT-X-KEY and EXT-X-MAP.
+    if (t.startsWith('#')) {
+      return original.replace(/URI=(['"])([^'"]+)\1/gi, (m, quote, uri) => {
+        const abs = resolveRelativeMediaUrl(uri, url);
+        return 'URI=' + quote + proxifyMediaUrl(abs) + quote;
+      });
+    }
+
+    const abs = resolveRelativeMediaUrl(t, url);
+    const clean = abs.split('?')[0].toLowerCase();
+    const hint = clean.endsWith('.m3u8') || clean.endsWith('.m3u') ? 'hls' : '';
+    return proxifyMediaUrl(abs, hint);
   }).join('\n');
 }
 
@@ -916,10 +935,12 @@ module.exports = async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,HEAD,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range,Content-Type,Accept,Origin,Referer,User-Agent');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length,Content-Range,Accept-Ranges,Content-Type');
   if (req.method === 'OPTIONS') { res.statusCode = 204; return res.end(); }
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Range, Content-Type, Authorization, Accept, Origin, Referer, User-Agent');
+  res.setHeader('Access-Control-Expose-Headers', 'Content-Length, Content-Range, Accept-Ranges, Content-Type');
   if (req.method === 'OPTIONS') return res.end('ok');
 
   const { searchParams } = new URL(req.url, 'http://localhost');
@@ -1042,7 +1063,9 @@ module.exports = async function handler(req, res) {
         ...(rangeHeader ? { Range: rangeHeader } : {}),
         'User-Agent': isMobileSafari ? IOS_UA : BROWSER_UA,
         Referer: REFERER,
-        Origin: ORIGIN
+        Origin: ORIGIN,
+        Accept: isMobileSafari ? 'application/vnd.apple.mpegurl,application/x-mpegURL,video/mp4,video/*,*/*' : '*/*',
+        Connection: 'keep-alive'
       };
       let upstream = await fetchUpstream(url, 0, upstreamHeaders);
       if (upstream.statusCode >= 400) {
@@ -1070,6 +1093,7 @@ module.exports = async function handler(req, res) {
       } else {
         res.setHeader('Content-Type', ct || 'application/octet-stream');
         res.setHeader('Content-Disposition','inline');
+        res.setHeader('Vary','Range, User-Agent');
         res.setHeader('X-Content-Type-Options','nosniff');
         res.setHeader('Access-Control-Allow-Origin','*');
         res.setHeader('Accept-Ranges','bytes');
