@@ -1,33 +1,76 @@
-# FilmVibe / KL11 Player Fix
+![Example](example.gif)
 
-## التعديل في هذه النسخة
+# 🎬 Zenith Movies (Ad-Free Scraper)
 
-- تم حذف تشغيل iframe الاحتياطي بالكامل حتى لا تظهر إعلانات مزود خارجي.
-- المشغل يستخدم الفيديو الطبيعي فقط عبر HLS/MP4 داخل مشغل FilmVibe.
-- إذا فشل رابط لا ينتقل إلى iframe؛ يجرب الروابط المباشرة الأخرى فقط.
-- تحسين iPhone/Safari:
-  - Proxy يدعم Range و HEAD.
-  - تجربة رابط البروكسي ثم الرابط المباشر بدون iframe.
-  - مهلة تشغيل مناسبة بدون تعليق طويل.
-- رسالة الخطأ أصبحت احترافية ولا تعرض تفاصيل تقنية للمستخدم.
+A simple movie streaming frontend that pulls video sources using scripts originally based on Vidlink. This version removes ads and provides a clean, minimal playback experience.
 
-## التشغيل
+## 🚀 Features
 
-```bash
-npm install
-npm start
+* 🎥 Stream movies directly in-browser
+* ⚡ Fast loading using HLS streams
+* 🚫 No ads (cleaned version of original scripts)
+* 🌐 Deployed easily with Vercel
+* 🔗 Simple URL-based playback system
+
+## 🧠 How It Works
+
+This project uses a scraping/proxy approach to retrieve video streams and display them in a native HTML5 player.
+
+Example:
+
+```
+https://your-site.vercel.app/?id=550
 ```
 
-ثم افتح:
+* `id` = Movie ID (typically from TMDB or similar source)
+* The app fetches and injects the stream into a video player
+* Playback is handled using HLS
 
-```text
-http://localhost:8090/?id=1301421
+## 📁 Project Structure
+
+```
+/
+├── index.html        # Main frontend
+├── script.js         # Handles fetching + playback
+├── style.css         # Basic styling
+└── /api              # Serverless functions (proxy/scraper logic)
 ```
 
-على الجوال استخدم IP الجهاز مع البورت:
+## 🛠️ Deployment (Vercel)
 
-```text
-http://192.168.3.11:8090/?id=1301421
+1. Clone or fork this repo
+2. Go to https://vercel.com
+3. Click **"Add New Project"**
+4. Import your repo
+5. Deploy (no config needed)
+
+Once deployed, your site will be live instantly.
+
+## ⚠️ Important Notes
+
+* This project is for **educational purposes only**
+* Streaming copyrighted content without permission may violate laws in your country
+* The original scripts were modified to remove ads, but credit belongs to their respective creators
+
+## 📌 Usage
+
+Just open:
+
+```
+https://your-vercel-url.vercel.app/?id=MOVIE_ID
 ```
 
-> إذا كان المصدر نفسه يرفض Safari/iPhone، فلن يتم استخدام iframe بسبب الإعلانات، وستظهر رسالة مشكلة مؤقتة في الخوادم.
+That’s it. No accounts, no UI clutter — just press play.
+
+## 💡 Future Improvements
+
+* Custom video player UI
+* Subtitles support
+* TV / remote-friendly controls
+* Better error handling
+
+---
+
+## ⭐ Support
+
+If you like this project, consider giving it a star ⭐ on GitHub!
