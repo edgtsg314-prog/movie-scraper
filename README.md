@@ -74,3 +74,7 @@ That’s it. No accounts, no UI clutter — just press play.
 ## ⭐ Support
 
 If you like this project, consider giving it a star ⭐ on GitHub!
+
+
+## AdShield
+The VidLink iframe is sandboxed without allow-popups/top-navigation to reduce popup ads and redirects. Third-party in-player ads cannot be fully removed from outside the iframe.

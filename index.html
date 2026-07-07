@@ -32,6 +32,9 @@
   iframe.allow='fullscreen; autoplay; encrypted-media; picture-in-picture';
   iframe.referrerPolicy='origin';
   iframe.allowFullscreen=true;
+  // AdShield: يمنع فتح نوافذ/تبويبات وإعادة توجيه الصفحة من داخل مشغل خارجي
+  // لا نضيف allow-popups ولا allow-top-navigation حتى لا تظهر إعلانات منبثقة.
+  iframe.setAttribute('sandbox','allow-scripts allow-same-origin allow-forms allow-presentation');
   document.getElementById('wrap').appendChild(iframe);
 })();
 </script>
