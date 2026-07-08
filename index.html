@@ -1,48 +1,113 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Stream</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>KLO Player</title>
+<link rel="preconnect" href="https://cdnjs.cloudflare.com">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
 <style>
-*{margin:0;padding:0;box-sizing:border-box}html,body{width:100%;height:100%;background:#000;color:#fff;font-family:system-ui,sans-serif;overflow:hidden}#wrap{position:fixed;inset:0;background:#000}iframe{width:100%;height:100%;border:0;display:block;background:#000}#usage,#err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;background:#000;gap:14px}code{color:#ddd}#err-title{font-size:2.1rem;font-weight:700}#err-detail{color:rgba(255,255,255,.55);font-size:.9rem}
+:root{--bg:#05050a;--panel:rgba(10,12,20,.78);--line:rgba(255,255,255,.12);--txt:#fff;--muted:rgba(255,255,255,.64);--a:#7c3aed;--b:#06b6d4;--danger:#ef4444}
+*{box-sizing:border-box;margin:0;padding:0}html,body{width:100%;height:100%;background:#000;color:var(--txt);font-family:system-ui,-apple-system,"Segoe UI",Arial,sans-serif;overflow:hidden}body:before{content:"";position:fixed;inset:-20%;background:radial-gradient(circle at 20% 20%,rgba(124,58,237,.28),transparent 34%),radial-gradient(circle at 80% 70%,rgba(6,182,212,.18),transparent 38%),#020204;pointer-events:none}.klo-player{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px}.klo-frame{position:relative;width:min(100%,1280px);height:min(100%,720px);aspect-ratio:16/9;border:1px solid rgba(255,255,255,.12);border-radius:24px;overflow:hidden;background:#000;box-shadow:0 40px 130px rgba(0,0,0,.72),0 0 80px rgba(124,58,237,.2)}.klo-frame:before{content:"";position:absolute;inset:0;border-radius:24px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.07);pointer-events:none;z-index:10}.topbar{position:absolute;top:0;left:0;right:0;z-index:20;height:58px;display:flex;align-items:center;justify-content:space-between;gap:10px;padding:0 16px;background:linear-gradient(180deg,rgba(4,7,17,.86),rgba(4,7,17,.35),transparent);opacity:0;transform:translateY(-8px);transition:.25s}.klo-frame:hover .topbar,.klo-frame.show-ui .topbar{opacity:1;transform:none}.brand{display:flex;align-items:center;gap:10px;font-weight:900;letter-spacing:.2px}.brand i{color:#8b5cf6}.pill{border:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.08);border-radius:999px;padding:9px 13px;color:#fff;text-decoration:none;font-weight:800;cursor:pointer;backdrop-filter:blur(14px)}.pill:hover{background:rgba(255,255,255,.14)}#video,#fallbackFrame{position:absolute;inset:0;width:100%;height:100%;border:0;background:#000;display:none}.loading,.error,.usage{position:absolute;inset:0;z-index:30;display:none;align-items:center;justify-content:center;flex-direction:column;text-align:center;padding:24px;background:#000;gap:14px}.spinner{width:46px;height:46px;border-radius:50%;border:3px solid rgba(255,255,255,.16);border-top-color:#8b5cf6;animation:spin .9s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}.msg-title{font-size:clamp(22px,4vw,42px);font-weight:950}.msg-detail{color:var(--muted);max-width:720px;line-height:1.8}.controls{position:absolute;left:0;right:0;bottom:0;z-index:25;padding:50px 16px 14px;background:linear-gradient(0deg,rgba(2,4,10,.95),rgba(2,4,10,.65),transparent);opacity:0;transform:translateY(14px);transition:.25s}.klo-frame:hover .controls,.klo-frame.show-ui .controls{opacity:1;transform:none}.progress{position:relative;height:18px;display:flex;align-items:center;cursor:pointer}.progress:before{content:"";position:absolute;left:0;right:0;height:5px;border-radius:99px;background:rgba(255,255,255,.2)}#bar{position:absolute;right:0;height:5px;border-radius:99px;background:linear-gradient(90deg,var(--b),var(--a));width:0}.row{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}.left,.right{display:flex;align-items:center;gap:8px}.btn{width:42px;height:42px;display:grid;place-items:center;border:0;border-radius:14px;background:rgba(255,255,255,.08);color:#fff;cursor:pointer;font-size:17px}.btn:hover{background:rgba(255,255,255,.16)}.time{direction:ltr;color:#e5e7eb;font-weight:800;font-variant-numeric:tabular-nums}.tag{font-size:12px;font-weight:950;color:#67e8f9}.vol{width:92px;accent-color:#8b5cf6}.select{height:40px;border-radius:13px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.08);color:#fff;padding:0 10px;max-width:160px}.select option{background:#111827}.notice{position:absolute;right:16px;bottom:82px;z-index:35;background:rgba(0,0,0,.72);border:1px solid rgba(255,255,255,.12);padding:10px 12px;border-radius:14px;color:#fff;display:none}.adsafe{position:absolute;left:16px;bottom:82px;z-index:35;background:rgba(16,185,129,.12);border:1px solid rgba(16,185,129,.22);color:#d1fae5;border-radius:999px;padding:9px 12px;font-size:12px;font-weight:900}.adsafe.warn{background:rgba(245,158,11,.12);border-color:rgba(245,158,11,.24);color:#fde68a}code{direction:ltr;unicode-bidi:bidi-override;background:rgba(255,255,255,.08);padding:3px 7px;border-radius:7px}@media(max-width:760px){.klo-player{padding:0}.klo-frame{width:100%;height:100%;border-radius:0;border:0}.klo-frame:before{border-radius:0}.topbar{height:54px}.controls{padding:44px 10px 12px}.btn{width:38px;height:38px;border-radius:12px}.vol{display:none}.select{max-width:118px}.adsafe{display:none}}
 </style>
 </head>
 <body>
-<div id="wrap"></div>
-<div id="usage">
-  <p><b>Stream</b><br><br><code>?id=550</code> movie<br><code>?id=456&s=1&e=1</code> TV episode</p>
+<div class="klo-player">
+  <main class="klo-frame show-ui" id="box">
+    <video id="video" playsinline webkit-playsinline preload="metadata" crossorigin="anonymous"></video>
+    <iframe id="fallbackFrame" allow="fullscreen; autoplay; encrypted-media; picture-in-picture" referrerpolicy="origin" allowfullscreen></iframe>
+
+    <div class="topbar">
+      <div class="brand"><i class="fa-solid fa-play"></i><span>KLO Player</span></div>
+      <a class="pill" id="openFull" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> فتح صفحة كاملة</a>
+    </div>
+
+    <div class="loading" id="loading"><div class="spinner"></div><div class="msg-detail">جاري تجهيز المشغل والترجمة...</div></div>
+    <div class="usage" id="usage"><div class="msg-title">KLO Player</div><div class="msg-detail">استخدم <code>?id=550</code> للفيلم أو <code>?id=94997&s=1&e=1</code> للحلقة</div></div>
+    <div class="error" id="error"><div class="msg-title">تعذر تشغيل المصدر النظيف</div><div class="msg-detail" id="errText"></div><button class="pill" id="tryIframe">تشغيل بالمصدر الاحتياطي</button></div>
+
+    <div class="adsafe" id="safeBadge"><i class="fa-solid fa-shield-halved"></i> Direct Mode بدون iframe إعلاني</div>
+    <div class="notice" id="notice"></div>
+
+    <section class="controls" id="controls">
+      <div class="progress" id="progress"><div id="bar"></div></div>
+      <div class="row">
+        <div class="right">
+          <button class="btn" id="play"><i class="fa-solid fa-play"></i></button>
+          <button class="btn" id="back"><i class="fa-solid fa-rotate-left"></i></button>
+          <button class="btn" id="fwd"><i class="fa-solid fa-rotate-right"></i></button>
+          <button class="btn" id="mute"><i class="fa-solid fa-volume-high"></i></button>
+          <input class="vol" id="vol" type="range" min="0" max="1" step="0.01" value="1">
+          <span class="time" id="time">0:00 / 0:00</span>
+          <span class="tag">DIRECT</span>
+        </div>
+        <div class="left">
+          <select class="select" id="subs"><option value="off">الترجمة: إيقاف</option></select>
+          <button class="btn" id="pip"><i class="fa-regular fa-clone"></i></button>
+          <button class="btn" id="fs"><i class="fa-solid fa-expand"></i></button>
+        </div>
+      </div>
+    </section>
+  </main>
 </div>
-<div id="err"><div id="err-title">Error Occurred</div><div id="err-detail"></div></div>
+<script src="https://cdn.jsdelivr.net/npm/hls.js@1.5.11/dist/hls.min.js"></script>
 <script>
 (function(){
-  var p=new URLSearchParams(location.search);
-  var id=p.get('id'), s=p.get('s'), e=p.get('e') || '1';
-  if(!id){ document.getElementById('usage').style.display='flex'; return; }
-
-  // VidLink official player URLs:
-  // movie: https://vidlink.pro/movie/{tmdbId}
-  // tv:    https://vidlink.pro/tv/{tmdbId}/{season}/{episode}
-  var src = s
-    ? 'https://vidlink.pro/tv/' + encodeURIComponent(id) + '/' + encodeURIComponent(s) + '/' + encodeURIComponent(e)
-    : 'https://vidlink.pro/movie/' + encodeURIComponent(id);
-
-  // تمرير أي باراميترات إضافية للمشغل مثل sub / sub_label / sub_lang إن كان المزود يدعمها.
-  var pass = new URLSearchParams();
-  ['sub','sub_label','sub_lang','lang','primaryColor','secondaryColor','autoplay'].forEach(function(k){
-    var v = p.get(k);
-    if(v) pass.set(k, v);
-  });
-  var qs = pass.toString();
-  if(qs) src += '?' + qs;
-
-  var iframe=document.createElement('iframe');
-  iframe.src=src;
-  iframe.allow='fullscreen; autoplay; encrypted-media; picture-in-picture';
-  iframe.referrerPolicy='origin';
-  iframe.allowFullscreen=true;
-  // VidLink يرفض sandbox ويعرض رسالة Please Disable Sandbox، لذلك لا نضيف sandbox هنا.
-  document.getElementById('wrap').appendChild(iframe);
+  const p=new URLSearchParams(location.search); const id=p.get('id'), s=p.get('s'), e=p.get('e')||'1';
+  const box=document.getElementById('box'), video=document.getElementById('video'), frame=document.getElementById('fallbackFrame');
+  const loading=document.getElementById('loading'), usage=document.getElementById('usage'), error=document.getElementById('error'), errText=document.getElementById('errText');
+  const controls=document.getElementById('controls'), notice=document.getElementById('notice'), badge=document.getElementById('safeBadge');
+  const play=document.getElementById('play'), bar=document.getElementById('bar'), time=document.getElementById('time'), progress=document.getElementById('progress');
+  const mute=document.getElementById('mute'), vol=document.getElementById('vol'), subs=document.getElementById('subs');
+  const fallbackSrc = s ? `https://vidlink.pro/tv/${encodeURIComponent(id)}/${encodeURIComponent(s)}/${encodeURIComponent(e)}` : `https://vidlink.pro/movie/${encodeURIComponent(id)}`;
+  document.getElementById('openFull').href=location.href;
+  if(!id){usage.style.display='flex';return;}
+  function show(el){[loading,usage,error].forEach(x=>x.style.display='none'); if(el) el.style.display='flex'}
+  function toast(t){notice.textContent=t;notice.style.display='block';clearTimeout(window.__nt);window.__nt=setTimeout(()=>notice.style.display='none',2600)}
+  function fmt(x){if(!isFinite(x))return'0:00';x=Math.max(0,Math.floor(x));let h=Math.floor(x/3600),m=Math.floor((x%3600)/60),sec=x%60;return h?`${h}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`:`${m}:${String(sec).padStart(2,'0')}`}
+  function fallback(reason){video.style.display='none';controls.style.display='none';badge.classList.add('warn');badge.innerHTML='<i class="fa-solid fa-triangle-exclamation"></i> Iframe احتياطي: لا يمكن ضمان منع الإعلانات 100%';frame.src=fallbackSrc;frame.style.display='block';show(null);if(reason)toast(reason)}
+  document.getElementById('tryIframe').onclick=()=>fallback('تم تشغيل المصدر الاحتياطي');
+  async function loadDirect(){
+    show(loading);
+    try{
+      const r=await fetch(`/api?id=${encodeURIComponent(id)}${s?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);
+      const data=await r.json();
+      if(!r.ok||!data.url) throw new Error(data.error||'No stream URL');
+      frame.style.display='none';video.style.display='block';controls.style.display='block';show(null);
+      if(data.url.includes('.m3u8') && window.Hls && Hls.isSupported()){
+        const hls=new Hls({enableWorker:true,lowLatencyMode:false});hls.loadSource(data.url);hls.attachMedia(video);window.__hls=hls;
+      } else if(video.canPlayType('application/vnd.apple.mpegurl')) video.src=data.url; else video.src=data.url;
+      await loadSubs();
+    }catch(ex){
+      errText.textContent='سيتم استخدام المشغل الاحتياطي. السبب: '+ex.message;
+      show(error);
+    }
+  }
+  async function loadSubs(){
+    try{
+      const lang=p.get('lang')||'ar,en';
+      const r=await fetch(`/api/subtitles?id=${encodeURIComponent(id)}${s?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}&lang=${encodeURIComponent(lang)}`);
+      const data=await r.json();
+      if(!data.subtitles||!data.subtitles.length){toast('لم يتم العثور على ترجمة مناسبة');return;}
+      data.subtitles.slice(0,6).forEach((sub,i)=>{
+        const track=document.createElement('track');track.kind='subtitles';track.label=sub.label||sub.language||('Subtitle '+(i+1));track.srclang=sub.language||'ar';track.src=sub.vtt;track.default=i===0;video.appendChild(track);
+        const opt=document.createElement('option');opt.value=String(i);opt.textContent=(i===0?'⭐ ':'')+(track.label||'Subtitle');subs.appendChild(opt);
+      });
+      subs.value='0'; setTimeout(()=>{if(video.textTracks[0]) video.textTracks[0].mode='showing'},500);
+      toast('تم اختيار أفضل ترجمة تلقائياً');
+    }catch(e){console.warn(e);}
+  }
+  play.onclick=()=> video.paused?video.play():video.pause();
+  video.addEventListener('play',()=>play.innerHTML='<i class="fa-solid fa-pause"></i>');video.addEventListener('pause',()=>play.innerHTML='<i class="fa-solid fa-play"></i>');
+  video.addEventListener('timeupdate',()=>{bar.style.width=((video.currentTime/(video.duration||1))*100)+'%';time.textContent=`${fmt(video.currentTime)} / ${fmt(video.duration)}`});
+  progress.onclick=e=>{const r=progress.getBoundingClientRect();video.currentTime=((e.clientX-r.left)/r.width)*(video.duration||0)};
+  document.getElementById('back').onclick=()=>video.currentTime=Math.max(0,video.currentTime-10);document.getElementById('fwd').onclick=()=>video.currentTime=Math.min(video.duration||999999,video.currentTime+10);
+  mute.onclick=()=>{video.muted=!video.muted;mute.innerHTML=video.muted?'<i class="fa-solid fa-volume-xmark"></i>':'<i class="fa-solid fa-volume-high"></i>'};vol.oninput=()=>video.volume=Number(vol.value);
+  subs.onchange=()=>{Array.from(video.textTracks).forEach((t,i)=>t.mode=(subs.value!== 'off' && String(i)===subs.value)?'showing':'disabled')};
+  document.getElementById('pip').onclick=async()=>{try{if(document.pictureInPictureElement)await document.exitPictureInPicture();else await video.requestPictureInPicture()}catch(e){toast('PiP غير مدعوم')}};
+  document.getElementById('fs').onclick=()=>{if(!document.fullscreenElement)box.requestFullscreen?.();else document.exitFullscreen?.()};
+  let uiTimer; function poke(){box.classList.add('show-ui');clearTimeout(uiTimer);uiTimer=setTimeout(()=>box.classList.remove('show-ui'),2600)};['mousemove','touchstart','keydown'].forEach(ev=>document.addEventListener(ev,poke,{passive:true}));
+  loadDirect();
 })();
 </script>
 </body>
