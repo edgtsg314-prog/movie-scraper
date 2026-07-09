@@ -97,6 +97,7 @@ const TMDB_KEY='3a73619bbb8fc6d47742d1b5b2b707b5';
 const rawQuery=(location.search&&location.search.length>1)?location.search.slice(1):(location.pathname.startsWith('/id=')?location.pathname.slice(1):'');
 const p=new URLSearchParams(rawQuery);
 const id=p.get('id'),s=p.get('s'),e=p.get('e')||'1', live=p.get('live');
+const directSrc = p.get('src') || p.get('url') || p.get('stream') || p.get('m3u8') || p.get('mp4') || '';
 const v=document.getElementById('video'),embedFrame=document.getElementById('embedFrame'),loader=document.getElementById('loader'),app=document.getElementById('app');
 const nameEl=document.getElementById('name'),metaEl=document.getElementById('meta'),backdrop=document.getElementById('backdrop');
 const playBtn=document.getElementById('play'),big=document.getElementById('big'),rew=document.getElementById('rew'),fwd=document.getElementById('fwd'),mute=document.getElementById('mute'),vol=document.getElementById('vol');
@@ -254,12 +255,15 @@ async function start(){
   setupEpisodeNav();await loadMeta();await fetchArabicSubtitle();try{const r=await fetch(`/api?id=${encodeURIComponent(id)}${isTv?`&s=${encodeURIComponent(s)}&e=${encodeURIComponent(e)}`:''}`);const d=await r.json();if(d.error)throw new Error(d.error);playSource(d.url)}catch(err){showErr(err.message)}
 }
 function getSourceKind(url){
-  const u=String(url||'').trim().split('#')[0];
+  const raw=String(url||'').trim();
+  const u=raw.split('#')[0];
   if(!u) return 'unknown';
-  if(/\.m3u8(\?|$)/i.test(u) || /application\/vnd\.apple\.mpegurl/i.test(u)) return 'hls';
-  if(/\.(mp4|m4v|webm|mov|mkv)(\?|$)/i.test(u)) return 'video';
+  if(/^data:video\//i.test(u) || /^blob:/i.test(u)) return 'video';
+  if(/\.m3u8(\?|$)/i.test(u) || /[?&](type|format)=hls/i.test(u) || /application\/vnd\.apple\.mpegurl/i.test(u)) return 'hls';
+  if(/\.(mp4|m4v|webm|mov)(\?|$)/i.test(u) || /[?&](type|format)=(mp4|video)/i.test(u)) return 'video';
   if(/^https?:\/\//i.test(u) && /(playlist|master|hls|m3u8)/i.test(u)) return 'hls';
-  return 'embed';
+  if(/^https?:\/\//i.test(u) && /(\.php|embed|iframe|player|vidsrc|vidlink|drab\.vercel\.app)/i.test(u) && !/(\.m3u8|\.mp4|\.m4v|\.webm|\.mov)/i.test(u)) return 'embed';
+  return /^https?:\/\//i.test(u) ? 'video' : 'embed';
 }
 function proxied(url){return '/api?url='+encodeURIComponent(url)}
 function playSource(raw, backups=[]){
