@@ -1,18 +1,29 @@
-# Movie Scraper VidLink No Sandbox Fix
+# IPTV Expert Player + Live Links
 
-هذه النسخة تحل رسالة:
+تشغيل:
 
-`Please Disable Sandbox`
+```bash
+npm install
+npm start
+```
 
-## الاستخدام
+المشغل:
 
-فيلم:
-`/?id=550`
+```text
+http://localhost:8090/?id=550
+http://localhost:8090/?id=1396&s=1&e=1
+```
 
-مسلسل:
-`/?id=94997&s=1&e=1`
+إدارة روابط البث المباشر:
 
-ترجمة خاصة إن كان VidLink يدعم تمريرها:
-`/?id=550&sub=https://yourdomain.com/subs/550-ar.vtt&sub_label=العربية&sub_lang=ar`
+```text
+http://localhost:8090/live-admin.html
+```
 
-> ملاحظة: لا يمكن منع إعلانات داخل iframe خارجي بدون sandbox، لأن VidLink يرفض sandbox.
+أضف القناة ورابطها الحقيقي، وسيولد النظام رابطًا مختصرًا مثل:
+
+```text
+http://localhost:8090/?live=beIN-sports-abc123
+```
+
+المستخدم لا يرى الرابط الحقيقي، ويستطيع المشغل فتح M3U8/MP4 أو Embed حسب نوع الرابط.
