@@ -67,15 +67,14 @@ async function getStream(id, season, episode) {
 }
 
 // ── HLS upstream fetcher with redirect support ────────────────────────────────
-function fetchUpstream(url, redirects = 0) {
+function fetchUpstream(url, redirects = 0, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     if (redirects > 5) return reject(new Error('too many redirects'));
-    (url.startsWith('https') ? https : http).get(url, {
-      headers: { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*' }
-    }, res => {
+    const headers = { Referer: REFERER, Origin: ORIGIN, 'User-Agent': BROWSER_UA, Accept: '*/*', ...extraHeaders };
+    (url.startsWith('https') ? https : http).get(url, { headers }, res => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         const loc = res.headers.location;
-        return resolve(fetchUpstream(loc.startsWith('http') ? loc : new URL(loc, url).href, redirects + 1));
+        return resolve(fetchUpstream(loc.startsWith('http') ? loc : new URL(loc, url).href, redirects + 1, extraHeaders));
       }
       resolve(res);
     }).on('error', reject);
@@ -676,6 +675,10 @@ async function liveAdminApi(req, res, q) {
 
 // ── Vercel serverless handler ─────────────────────────────────────────────────
 module.exports = async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin','*');
+  res.setHeader('Access-Control-Allow-Headers','Range, Content-Type, Accept');
+  res.setHeader('Access-Control-Expose-Headers','Content-Length, Content-Range, Accept-Ranges');
+  if(req.method==='OPTIONS'){res.statusCode=204;return res.end();}
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -768,24 +771,38 @@ module.exports = async function handler(req, res) {
   if (q.url) {
     const url = decodeURIComponent(q.url);
     try {
-      const upstream = await fetchUpstream(url);
+      const extra = {};
+      if (req.headers.range) extra.Range = req.headers.range;
+      const upstream = await fetchUpstream(url, 0, extra);
       const ct = (upstream.headers['content-type'] || '').toLowerCase();
       const isM3u8 = ct.includes('mpegurl') || ct.includes('m3u8') || /\.m3u8?(\?|$)/i.test(url.split('?')[0]);
+
+      if (upstream.statusCode >= 400) {
+        res.statusCode = upstream.statusCode;
+        res.setHeader('Content-Type', ct || 'text/plain; charset=utf-8');
+        return upstream.pipe(res);
+      }
 
       if (isM3u8) {
         const chunks = [];
         for await (const chunk of upstream) chunks.push(chunk);
         const body = Buffer.concat(chunks).toString('utf8');
+        res.statusCode = 200;
         res.setHeader('Content-Type', 'application/vnd.apple.mpegurl');
+        res.setHeader('Cache-Control', 'no-store');
         return res.end(rewriteM3u8(body, url));
       } else {
+        res.statusCode = upstream.statusCode || 200;
         res.setHeader('Content-Type', ct || 'application/octet-stream');
+        res.setHeader('Accept-Ranges', upstream.headers['accept-ranges'] || 'bytes');
         if (upstream.headers['content-length']) res.setHeader('Content-Length', upstream.headers['content-length']);
-        res.statusCode = upstream.statusCode;
+        if (upstream.headers['content-range']) res.setHeader('Content-Range', upstream.headers['content-range']);
+        if (upstream.headers['cache-control']) res.setHeader('Cache-Control', upstream.headers['cache-control']);
         upstream.pipe(res);
       }
     } catch (err) {
       res.statusCode = 502;
+      res.setHeader('Content-Type','text/plain; charset=utf-8');
       res.end(err.message);
     }
     return;
